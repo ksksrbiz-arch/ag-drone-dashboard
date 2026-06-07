@@ -30,7 +30,7 @@ export default function PipelinePage() {
       .select('id, business_name, owner_name, vertical, city, county, primary_crop, lead_score, loi_status, composite_efb_risk, action_recommendation, assigned_to, est_annual_revenue')
       .order('lead_score', { ascending: false })
       .then(({ data }) => {
-        setLeads(data ?? [])
+        setLeads((data ?? []) as Lead[])
         setLoading(false)
       })
   }, [])
