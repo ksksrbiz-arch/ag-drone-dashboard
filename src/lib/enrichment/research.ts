@@ -3,6 +3,7 @@ import type { Lead } from '@/lib/supabase'
 import type { ResearchResult } from './types'
 import { COMPANY_CONTEXT, EFFORT, MODEL } from './config'
 import { BUSINESS } from '@/lib/business'
+import { verticalGuidance } from './verticals'
 import { missingFields } from './completeness'
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -34,9 +35,9 @@ recommendation tailored to this company. Rules:
 - NEVER invent or guess. If you cannot verify a value, return null for it.
 - Prefer recent, authoritative sources (the business's own site, Google Business,
   county/USDA/extension records, ag directories, LinkedIn).
-- "recommended_approach" must be specific to THIS lead and to a drone spray /
-  scouting operator in ${BUSINESS.region} — what to lead with, which service
-  fits, timing, and the single best way to make contact.
+- "recommended_approach" must be specific to THIS lead and to our drone services
+  in ${BUSINESS.region} — what to lead with, which service fits, timing, and the
+  single best way to make contact. (Vertical-specific guidance follows below.)
 - Report a calibrated overall confidence in [0,1].
 
 Return ONLY a single fenced \`\`\`json code block, no prose before or after, with
@@ -104,7 +105,7 @@ export async function researchLead(lead: Lead): Promise<ResearchResult> {
     max_tokens: 4000,
     thinking: { type: 'adaptive' },
     output_config: { effort: EFFORT },
-    system: SYSTEM,
+    system: SYSTEM + verticalGuidance(lead.vertical),
     tools: [{ type: 'web_search_20260209', name: 'web_search' }],
     messages: [{ role: 'user', content: leadBrief(lead) }],
   }
