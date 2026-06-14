@@ -2,6 +2,10 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, type Lead, type ActionRec } from '@/lib/supabase'
+import {
+  ModelStatusBarSkeleton,
+  IntelBoardSkeleton,
+} from '@/components/intel/Skeletons'
 
 const ACTION_CONFIG: Record<ActionRec, { label: string; bg: string; border: string; text: string; dot: string }> = {
   TREAT_NOW:   { label: '🔴 Treat Now',   bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-700',    dot: 'bg-red-500'    },
@@ -68,30 +72,29 @@ export default function IntelPage() {
       </div>
 
       {/* Model status bar */}
-      <div className="bg-slate-800 text-white rounded-xl px-5 py-3 mb-6 flex flex-wrap gap-6 text-sm">
-        <Stat label="Parcels Analyzed" value={filtered.length} />
-        <Stat label="High Risk (≥75)" value={filtered.filter(l => (l.composite_efb_risk ?? 0) >= 75).length} />
-        <Stat label="Avg EFB Risk" value={
-          filtered.length
-            ? Math.round(filtered.reduce((s, l) => s + (l.composite_efb_risk ?? 0), 0) / filtered.length)
-            : '—'
-        } />
-        <Stat label="ML Covered" value={`${filtered.filter(l => l.ml_efb_risk !== null).length} parcels`} />
-        <Stat label="Avg ML Confidence" value={
-          filtered.filter(l => l.ml_confidence !== null).length
-            ? `${Math.round(filtered.filter(l => l.ml_confidence !== null).reduce((s, l) => s + (l.ml_confidence ?? 0), 0) / filtered.filter(l => l.ml_confidence !== null).length * 100)}%`
-            : '—'
-        } />
-      </div>
+      {loading ? (
+        <ModelStatusBarSkeleton />
+      ) : (
+        <div className="bg-slate-800 text-white rounded-xl px-5 py-3 mb-6 flex flex-wrap gap-6 text-sm">
+          <Stat label="Parcels Analyzed" value={filtered.length} />
+          <Stat label="High Risk (≥75)" value={filtered.filter(l => (l.composite_efb_risk ?? 0) >= 75).length} />
+          <Stat label="Avg EFB Risk" value={
+            filtered.length
+              ? Math.round(filtered.reduce((s, l) => s + (l.composite_efb_risk ?? 0), 0) / filtered.length)
+              : '—'
+          } />
+          <Stat label="ML Covered" value={`${filtered.filter(l => l.ml_efb_risk !== null).length} parcels`} />
+          <Stat label="Avg ML Confidence" value={
+            filtered.filter(l => l.ml_confidence !== null).length
+              ? `${Math.round(filtered.filter(l => l.ml_confidence !== null).reduce((s, l) => s + (l.ml_confidence ?? 0), 0) / filtered.filter(l => l.ml_confidence !== null).length * 100)}%`
+              : '—'
+          } />
+        </div>
+      )}
 
       {loading ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="space-y-2">
-              <div className="h-9 skeleton" />
-              <div className="h-20 skeleton" /><div className="h-20 skeleton" />
-            </div>
-          ))}
+        <div className="flex gap-5">
+          <IntelBoardSkeleton />
         </div>
       ) : (
         <div className="flex gap-5">
