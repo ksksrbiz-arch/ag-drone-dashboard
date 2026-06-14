@@ -1,19 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabaseAdmin'
 import { cheapComplete, aiConfigured, extractJson } from '@/lib/ai/llm'
+import { LEAD_TAG_VOCAB as VOCAB } from '@/lib/ai/tagging'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
-
-// Controlled vocabulary — additive tags only; we never overwrite existing data.
-const VOCAB = [
-  // crop / operation category
-  'hazelnut', 'grass-seed', 'vineyard', 'berry', 'nursery', 'orchard',
-  'row-crop', 'hops', 'christmas-trees', 'mint', 'dairy', 'other-crop',
-  // fit / intent signals
-  'high-acreage', 'efb-target', 'spray-fit', 'scouting-fit', 'outreach-ready', 'low-fit',
-] as const
 
 export async function POST(req: NextRequest) {
   if (!aiConfigured()) {
