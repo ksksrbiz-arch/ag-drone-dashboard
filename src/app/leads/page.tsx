@@ -28,6 +28,13 @@ const ACTION_COLORS: Record<string, string> = {
   MONITOR:     'bg-green-100 text-green-700',
 }
 
+const TIER_COLORS: Record<string, string> = {
+  P1: 'bg-red-100 text-red-700',
+  P2: 'bg-orange-100 text-orange-700',
+  P3: 'bg-yellow-100 text-yellow-700',
+  P4: 'bg-slate-100 text-slate-500',
+}
+
 const LOI_COLORS: Record<string, string> = {
   not_contacted:     'bg-slate-100 text-slate-500',
   contacted:         'bg-blue-100 text-blue-600',
@@ -43,8 +50,9 @@ export default function LeadsPage() {
   const [search, setSearch] = useState('')
   const [vertical, setVertical] = useState<Vertical | 'all'>('all')
   const [loiStatus, setLoiStatus] = useState<LOIStatus | 'all'>('all')
-  const [sortBy, setSortBy] = useState<'lead_score' | 'composite_efb_risk' | 'distance_to_canby_mi'>('lead_score')
+  const [sortBy, setSortBy] = useState<'priority_score' | 'lead_score' | 'composite_efb_risk' | 'distance_to_canby_mi'>('priority_score')
   const [selected, setSelected] = useState<Lead | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     supabase
@@ -56,6 +64,21 @@ export default function LeadsPage() {
         setLoading(false)
       })
   }, [])
+
+  async function refreshIntel(lead: Lead) {
+    setRefreshing(true)
+    try {
+      await fetch(`/api/enrich/lead/${lead.id}`, { method: 'POST' })
+      const { data } = await supabase.from('leads').select('*').eq('id', lead.id).limit(1)
+      const updated = (data?.[0] as Lead) ?? null
+      if (updated) {
+        setLeads(prev => prev.map(l => (l.id === updated.id ? updated : l)))
+        setSelected(updated)
+      }
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const filtered = useMemo(() => {
     return leads
@@ -116,6 +139,7 @@ export default function LeadsPage() {
           onChange={e => setSortBy(e.target.value as typeof sortBy)}
           className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
         >
+          <option value="priority_score">Sort: Priority</option>
           <option value="lead_score">Sort: Lead Score</option>
           <option value="composite_efb_risk">Sort: EFB Risk</option>
           <option value="distance_to_canby_mi">Sort: Distance</option>
@@ -135,6 +159,7 @@ export default function LeadsPage() {
                 <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                   <tr className="text-left text-xs text-slate-500">
                     <th className="px-4 py-3 font-medium">Farm / Business</th>
+                    <th className="px-4 py-3 font-medium">Priority</th>
                     <th className="px-4 py-3 font-medium">Location</th>
                     <th className="px-4 py-3 font-medium">Crop</th>
                     <th className="px-4 py-3 font-medium">Acres</th>
@@ -159,6 +184,16 @@ export default function LeadsPage() {
                         {lead.contact_name && (
                           <div className="text-xs text-slate-400">{lead.contact_name}</div>
                         )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {lead.priority_tier ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TIER_COLORS[lead.priority_tier] ?? ''}`}>
+                              {lead.priority_tier}
+                            </span>
+                            <span className="text-xs font-bold text-slate-600">{lead.priority_score}</span>
+                          </span>
+                        ) : <span className="text-slate-300 text-xs">—</span>}
                       </td>
                       <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
                         {lead.city}, {lead.county} Co.
@@ -218,6 +253,37 @@ export default function LeadsPage() {
               <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
             </div>
 
+            {(selected.priority_score != null || selected.recommended_approach || selected.enrichment_status) && (
+              <Section title="Intelligence">
+                {selected.priority_score != null && (
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-slate-400">Priority</span>
+                    <span className="flex items-center gap-1.5">
+                      {selected.priority_tier && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TIER_COLORS[selected.priority_tier] ?? ''}`}>
+                          {selected.priority_tier}
+                        </span>
+                      )}
+                      <span className="text-sm font-bold text-slate-700">{selected.priority_score}/100</span>
+                    </span>
+                  </div>
+                )}
+                <Detail label="Data Completeness" value={selected.data_completeness != null ? `${selected.data_completeness}%` : null} />
+                <Detail label="Enrichment" value={selected.enrichment_status} />
+                <Detail label="AI Confidence" value={selected.enrichment_confidence != null ? `${Math.round(selected.enrichment_confidence * 100)}%` : null} />
+                <Detail label="Last Enriched" value={selected.enriched_at ? new Date(selected.enriched_at).toLocaleDateString() : null} />
+                {selected.best_contact_method && <Detail label="Best Contact" value={selected.best_contact_method} />}
+                {selected.recommended_approach && (
+                  <div className="mt-2 text-xs text-slate-600 bg-brand-50 border border-brand-100 rounded-lg p-2.5">
+                    <span className="font-semibold text-brand-700">Recommended approach:</span> {selected.recommended_approach}
+                  </div>
+                )}
+                {selected.research_summary && (
+                  <p className="mt-2 text-xs text-slate-500">{selected.research_summary}</p>
+                )}
+              </Section>
+            )}
+
             <Section title="Contact">
               <Detail label="Owner" value={selected.owner_name} />
               <Detail label="Contact" value={selected.contact_name} />
@@ -260,6 +326,15 @@ export default function LeadsPage() {
                 <p className="text-xs text-slate-500">{selected.notes}</p>
               </Section>
             )}
+
+            <button
+              onClick={() => refreshIntel(selected)}
+              disabled={refreshing}
+              className="w-full text-xs bg-brand-500 hover:bg-brand-600 text-white rounded-lg
+                         py-2 font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {refreshing ? 'Researching…' : '🤖 Refresh intel'}
+            </button>
           </div>
         )}
       </div>
