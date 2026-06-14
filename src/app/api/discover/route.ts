@@ -38,8 +38,9 @@ export async function POST(req: NextRequest) {
   const supabase = getAdminClient()
 
   let found
+  let diag
   try {
-    ;({ leads: found } = await discoverLeads(cat, limit))
+    ;({ leads: found, diag } = await discoverLeads(cat, limit))
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 })
   }
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
       found: candidates.length,
       newCount: fresh.length,
       candidates,
+      _diag: diag, // search-stage visibility: which provider, hit counts, statuses
     })
   }
 
