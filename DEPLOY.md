@@ -130,7 +130,9 @@ dashboard current with no manual data entry.
 
 **How it runs:**
 
-- **Scheduled:** Vercel Cron hits `/api/enrich/run` every 6 hours (`vercel.json`).
+- **Scheduled:** Vercel Cron hits `/api/enrich/run` daily at 08:00 UTC
+  (`vercel.json`). Vercel Hobby allows one cron run/day; on the Pro plan you can
+  increase the frequency (e.g. `0 */6 * * *` for every 6 hours).
 - **On demand:** the **Run automation now** button on `/automation`, or the
   **Refresh intel** button on any lead in `/leads`.
 - **Endpoints:** `POST /api/enrich/run`, `POST /api/enrich/lead/[id]`,

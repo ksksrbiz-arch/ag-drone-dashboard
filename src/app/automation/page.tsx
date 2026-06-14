@@ -440,7 +440,7 @@ function EngineHealth({ caps }: { caps: Capabilities | null }) {
     {
       label: 'Schedule',
       ok: true,
-      detail: `every 6h · batch ${caps.batchSize}`,
+      detail: `daily · batch ${caps.batchSize}`,
     },
   ]
   return (
