@@ -40,7 +40,8 @@ grant select, insert, update on public.alerts to anon, authenticated, service_ro
 
 -- Raise alerts on urgent state transitions.
 create or replace function public.raise_lead_alerts()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path = '' as $$
 begin
   if new.action_recommendation = 'TREAT_NOW'
      and new.action_recommendation is distinct from old.action_recommendation then
