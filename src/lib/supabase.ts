@@ -10,7 +10,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // ─── Types matching supabase_schema.sql ────────────────────────────────────
 
-export type Vertical = 'ag_spray' | 'insurance' | 'real_estate' | 'construction'
+export type Vertical = 'ag_spray' | 'insurance' | 'real_estate' | 'construction' | 'energy'
 export type LOIStatus =
   | 'not_contacted'
   | 'contacted'
