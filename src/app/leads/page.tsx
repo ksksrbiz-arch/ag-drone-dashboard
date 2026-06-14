@@ -123,21 +123,21 @@ export default function LeadsPage() {
         <select
           value={vertical}
           onChange={e => setVertical(e.target.value as Vertical | 'all')}
-          className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="tap text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
         >
           {VERTICALS.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
         </select>
         <select
           value={loiStatus}
           onChange={e => setLoiStatus(e.target.value as LOIStatus | 'all')}
-          className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="tap text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
         >
           {LOI_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         <select
           value={sortBy}
           onChange={e => setSortBy(e.target.value as typeof sortBy)}
-          className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="tap text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
         >
           <option value="priority_score">Sort: Priority</option>
           <option value="lead_score">Sort: Lead Score</option>
@@ -250,7 +250,7 @@ export default function LeadsPage() {
               <h3 className="font-semibold text-slate-900 text-sm leading-tight">
                 {selected.business_name ?? selected.owner_name ?? 'Lead Detail'}
               </h3>
-              <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
+              <button onClick={() => setSelected(null)} aria-label="Close detail" className="tap-sq inline-flex items-center justify-center text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>
 
             {(selected.priority_score != null || selected.recommended_approach || selected.enrichment_status) && (
@@ -330,7 +330,7 @@ export default function LeadsPage() {
             <button
               onClick={() => refreshIntel(selected)}
               disabled={refreshing}
-              className="w-full text-xs bg-brand-500 hover:bg-brand-600 text-white rounded-lg
+              className="tap inline-flex items-center justify-center gap-1.5 w-full text-xs bg-brand-500 hover:bg-brand-600 text-white rounded-lg
                          py-2 font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {refreshing ? 'Researching…' : '🤖 Refresh intel'}

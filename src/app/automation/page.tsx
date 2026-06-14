@@ -140,7 +140,7 @@ export default function AutomationPage() {
         <button
           onClick={runNow}
           disabled={running}
-          className="text-sm bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg px-4 py-2
+          className="tap inline-flex items-center justify-center text-sm bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg px-4 py-2
                      transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-card"
         >
           {running ? 'Researching…' : '⚡ Run automation now'}

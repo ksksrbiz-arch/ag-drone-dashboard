@@ -74,7 +74,7 @@ export default function JobsPage() {
       <div className="flex flex-wrap gap-2 mb-5">
         <button
           onClick={() => setStatusFilter('all')}
-          className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-colors
+          className={`tap inline-flex items-center text-xs px-3 py-1.5 rounded-full font-medium border transition-colors
             ${statusFilter === 'all' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}
         >
           All ({jobs.length})
@@ -86,7 +86,7 @@ export default function JobsPage() {
             <button
               key={s.status}
               onClick={() => setStatusFilter(s.status)}
-              className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-colors
+              className={`tap inline-flex items-center text-xs px-3 py-1.5 rounded-full font-medium border transition-colors
                 ${statusFilter === s.status ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}
             >
               {s.label} ({count})

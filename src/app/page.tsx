@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { supabase, type Lead, type Job } from '@/lib/supabase'
+import { ActionIcon, RiskGaugeIcon } from '@/components/intel/icons'
 
 interface KPIs {
   totalLeads: number
@@ -118,11 +119,12 @@ export default function OverviewPage() {
       <div>
         <h2 className="text-sm font-semibold text-slate-700 mb-3">EFB Action Queue</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <ActionCard label="🔴 Treat Now" count={k.treatNow} colorClass="bg-red-50 border-red-200" />
-          <ActionCard label="🟠 Scout Now" count={k.scoutNow} colorClass="bg-orange-50 border-orange-200" />
-          <ActionCard label="🟡 Contact Now" count={k.contactNow} colorClass="bg-yellow-50 border-yellow-200" />
+          <ActionCard icon={<ActionIcon action="TREAT_NOW" />} label="Treat Now" count={k.treatNow} colorClass="bg-red-50 border-red-200" />
+          <ActionCard icon={<ActionIcon action="SCOUT_NOW" />} label="Scout Now" count={k.scoutNow} colorClass="bg-orange-50 border-orange-200" />
+          <ActionCard icon={<ActionIcon action="CONTACT_NOW" />} label="Contact Now" count={k.contactNow} colorClass="bg-yellow-50 border-yellow-200" />
           <ActionCard
-            label="🧠 Avg EFB Risk"
+            icon={<RiskGaugeIcon size={14} strokeWidth={2.5} />}
+            label="Avg EFB Risk"
             count={k.avgEfbRisk !== null ? `${k.avgEfbRisk}/100` : '—'}
             colorClass="bg-slate-50 border-slate-200"
           />
@@ -235,10 +237,12 @@ function KPICard({ label, value, sub, color }: { label: string; value: string | 
   )
 }
 
-function ActionCard({ label, count, colorClass }: { label: string; count: string | number; colorClass: string }) {
+function ActionCard({ icon, label, count, colorClass }: { icon?: ReactNode; label: string; count: string | number; colorClass: string }) {
   return (
     <div className={`rounded-xl border p-4 ${colorClass}`}>
-      <div className="text-sm font-medium text-slate-700">{label}</div>
+      <div className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+        {icon}{label}
+      </div>
       <div className="text-2xl font-bold text-slate-900 mt-1">{count}</div>
     </div>
   )

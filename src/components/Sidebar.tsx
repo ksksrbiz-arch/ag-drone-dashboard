@@ -37,7 +37,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             key={item.href}
             href={item.href}
             onClick={onNavigate}
-            className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
+            className={`tap relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
               ${active
                 ? 'bg-brand-600/15 text-white font-semibold'
                 : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}
@@ -73,7 +73,7 @@ export default function Sidebar() {
         <button
           aria-label="Open menu"
           onClick={() => setOpen(true)}
-          className="text-slate-200 p-2 -mr-2 rounded-lg hover:bg-white/10"
+          className="tap-sq inline-flex items-center justify-center text-slate-200 -mr-2 rounded-lg hover:bg-white/10"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round"/></svg>
         </button>
@@ -86,7 +86,7 @@ export default function Sidebar() {
           <div className={`absolute left-0 top-0 bottom-0 w-64 flex flex-col ${PANEL} shadow-2xl animate-fade`}>
             <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
               <Brand />
-              <button aria-label="Close menu" onClick={() => setOpen(false)} className="text-slate-300 text-2xl leading-none px-1">×</button>
+              <button aria-label="Close menu" onClick={() => setOpen(false)} className="tap-sq inline-flex items-center justify-center text-slate-300 text-2xl leading-none">×</button>
             </div>
             <NavLinks onNavigate={() => setOpen(false)} />
             <Footer />
