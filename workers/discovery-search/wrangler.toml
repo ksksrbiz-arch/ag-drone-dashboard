@@ -1,0 +1,15 @@
+name = "drone-discovery-search"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Secrets (set with `wrangler secret put`, never commit):
+#   BRAVE_API_KEY         — https://api-dashboard.search.brave.com/ (free tier)
+#   TAVILY_API_KEY        — https://tavily.com (optional; used alongside Brave)
+#   WORKER_SHARED_SECRET  — any long random string; must match DISCOVERY_WORKER_SECRET in Vercel
+
+# Optional: KV cache to conserve the search free tiers (24h per query).
+# Create it, then uncomment and paste the id:
+#   wrangler kv namespace create SEARCH_CACHE
+# [[kv_namespaces]]
+# binding = "SEARCH_CACHE"
+# id = "<your-kv-namespace-id>"
