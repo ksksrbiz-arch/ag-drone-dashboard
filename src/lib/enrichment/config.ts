@@ -3,11 +3,11 @@ import type { EngineCapabilities } from './types'
 
 // Model + engine tuning, all overridable via environment variables so the
 // pipeline can be dialed in from Vercel without code changes.
-// Default is Sonnet 4.6 — ~40% cheaper than Opus on the per-lead research that
-// dominates AI spend, and still strong with web search + adaptive thinking.
-// Set ENRICHMENT_MODEL=claude-opus-4-8 to trade cost for max research quality.
-export const MODEL = process.env.ENRICHMENT_MODEL || 'claude-sonnet-4-6'
-export const MODEL_VERSION = 'lead-intel-v1'
+// Enrichment now runs SSOT-grounded analysis on the free, OpenAI-compatible
+// models (Groq / OpenRouter) via src/lib/ai/llm.ts — no web search, no
+// Anthropic credits required. ENRICHMENT_MODEL is kept for display/compat.
+export const MODEL = process.env.ENRICHMENT_MODEL || 'free (groq/openrouter)'
+export const MODEL_VERSION = 'lead-intel-v2-ssot'
 
 export const EFFORT = (process.env.ENRICHMENT_EFFORT || 'medium') as
   | 'low'
@@ -18,7 +18,13 @@ export const BATCH_SIZE = intEnv('ENRICHMENT_BATCH_SIZE', 6, 1, 50)
 export const CONCURRENCY = intEnv('ENRICHMENT_CONCURRENCY', 3, 1, 8)
 export const STALE_DAYS = intEnv('ENRICHMENT_STALE_DAYS', 7, 1, 365)
 
-export const AI_ENABLED = Boolean(process.env.ANTHROPIC_API_KEY)
+// Enrichment runs whenever ANY chat provider is configured — the free Groq /
+// OpenRouter models are preferred (see src/lib/ai/llm.ts), Anthropic optional.
+export const AI_ENABLED = Boolean(
+  process.env.GROQ_API_KEY ||
+    process.env.OPENROUTER_API_KEY ||
+    process.env.ANTHROPIC_API_KEY
+)
 export const APOLLO_ENABLED = Boolean(process.env.APOLLO_API_KEY)
 
 /** Manual ("Run Now") triggers require the cron secret only when this is true. */
