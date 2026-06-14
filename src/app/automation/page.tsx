@@ -41,11 +41,31 @@ export default function AutomationPage() {
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [tagBusy, setTagBusy] = useState<'preview' | 'apply' | null>(null)
+  const [tagResult, setTagResult] = useState<any>(null)
 
   const loadLeads = useCallback(async () => {
     const { data } = await supabase.from('leads').select('*')
     setLeads((data ?? []) as Lead[])
   }, [])
+
+  async function runTagging(dryRun: boolean) {
+    setTagBusy(dryRun ? 'preview' : 'apply')
+    try {
+      const res = await fetch('/api/leads/tag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun, limit: 20, onlyUntagged: true }),
+      })
+      const json = await res.json()
+      setTagResult(json)
+      if (!dryRun && json.ok) loadLeads()
+    } catch (err: any) {
+      setTagResult({ ok: false, error: String(err?.message ?? err) })
+    } finally {
+      setTagBusy(null)
+    }
+  }
 
   // From the Supabase `next_best_actions` view (intelligence_backend migration).
   // Resolves empty if the view isn't present yet — no error surfaced.
@@ -348,6 +368,64 @@ export default function AutomationPage() {
           </div>
         </div>
       )}
+
+      {/* AI lead tagging (Groq/OpenRouter/Claude) */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
+          <h2 className="text-sm font-semibold text-slate-700">AI Lead Tagging</h2>
+          <span className="text-xs text-slate-400">
+            {leads.filter(l => !l.tags || l.tags.length === 0).length} untagged
+          </span>
+        </div>
+        <p className="text-xs text-slate-400 mb-4">
+          Adds normalized crop/fit tags (additive — never overwrites existing data), 20 leads per pass.
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => runTagging(true)}
+            disabled={tagBusy !== null}
+            className="tap inline-flex items-center justify-center text-sm border border-slate-200 hover:border-slate-400 text-slate-700 rounded-lg px-4 py-2 font-medium transition-colors disabled:opacity-60"
+          >
+            {tagBusy === 'preview' ? 'Previewing…' : 'Preview (dry run)'}
+          </button>
+          <button
+            onClick={() => runTagging(false)}
+            disabled={tagBusy !== null}
+            className="tap inline-flex items-center justify-center text-sm bg-brand-500 hover:bg-brand-600 text-white rounded-lg px-4 py-2 font-medium transition-colors disabled:opacity-60 shadow-card"
+          >
+            {tagBusy === 'apply' ? 'Tagging…' : 'Tag next 20'}
+          </button>
+        </div>
+
+        {tagResult && (
+          <div className="mt-4">
+            {tagResult.ok === false ? (
+              <p className="text-xs text-red-600">{tagResult.error}</p>
+            ) : (
+              <>
+                <p className="text-xs text-slate-500 mb-2">
+                  {tagResult.dryRun ? 'Preview' : 'Applied'} · {tagResult.tagged}/{tagResult.processed} tagged
+                  {tagResult.note ? ` · ${tagResult.note}` : ''}
+                </p>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                  {(tagResult.results ?? []).map((r: any) => (
+                    <div key={r.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-700 truncate">{r.name}</span>
+                      <span className="flex flex-wrap gap-1 shrink-0 justify-end">
+                        {r.tags.map((t: string) => (
+                          <span key={t} className="px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-100">
+                            {t}
+                          </span>
+                        ))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Run history */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
