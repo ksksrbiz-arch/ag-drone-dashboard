@@ -194,6 +194,22 @@ export interface Alert {
   read: boolean
 }
 
+export interface Field {
+  id: string
+  name: string
+  customer_id: string | null
+  lead_id: string | null
+  crop: string | null
+  acreage: number | null
+  boundary: import('./geo').FieldGeometry | null
+  center_lat: number | null
+  center_lon: number | null
+  color: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface PipelineSummary {
   vertical: Vertical
   loi_status: LOIStatus

@@ -11,6 +11,7 @@ const navItems = [
   { href: '/customers',  label: 'Customers',  icon: '🤝' },
   { href: '/jobs',       label: 'Jobs',       icon: '✈️' },
   { href: '/field-ops',  label: 'Field Ops',  icon: '🌤️' },
+  { href: '/fields',     label: 'Fields',     icon: '🗺️' },
   { href: '/finance',    label: 'Finance',    icon: '💵' },
   { href: '/intel',      label: 'EFB Intel',  icon: '🧠' },
   { href: '/alerts',     label: 'Alerts',     icon: '🔔' },

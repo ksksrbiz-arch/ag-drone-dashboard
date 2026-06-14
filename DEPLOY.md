@@ -104,9 +104,11 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
 | `/` | Overview — KPIs, EFB action queue, vertical breakdown, top leads, recent jobs |
 | `/leads` | Full lead database with search, filters, EFB risk bars, detail panel |
 | `/pipeline` | LOI Kanban — 6-stage pipeline with one-click stage advance |
+| `/customers` | Customer CRM — customers, contracts, service history; convert leads to customers |
 | `/jobs` | Job tracker — revenue summary, status filter, full job table |
 | `/intel` | EFB Intelligence Hub — action queue columns, composite risk cards, detail panel |
 | `/field-ops` | Field Ops — 7-day spray-window forecast (Open-Meteo) + job scheduling |
+| `/fields` | Fields — mapped field boundaries (GeoJSON import) with auto-acreage over satellite imagery |
 | `/finance` | Financial Intelligence — revenue, A/R aging, weighted pipeline forecast |
 | `/alerts` | Alerts — urgent lead transitions + daily ops digest (set `SLACK_WEBHOOK_URL` to auto-post the digest on the daily cron) |
 | `/automation` | Lead Intelligence Automation — engine health, priority distribution, run history, manual trigger |
