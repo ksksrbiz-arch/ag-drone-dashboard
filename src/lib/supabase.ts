@@ -1,12 +1,13 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = (
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-)!
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Cookie-based browser client (via @supabase/ssr) so the anon session is carried
+// in cookies and visible to middleware + server components. Everything importing
+// `@/lib/supabase` keeps working unchanged.
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)!
+)
 
 // ─── Types matching supabase_schema.sql ────────────────────────────────────
 

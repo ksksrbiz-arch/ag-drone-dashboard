@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runEnrichment } from '@/lib/enrichment/engine'
+import { requireStaffOrCron } from '@/lib/auth/guard'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -8,9 +9,12 @@ export const maxDuration = 120
 // On-demand enrichment for a single lead (the per-lead "Refresh intel" action).
 // Next 15: route-handler `params` is async and must be awaited.
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const gate = await requireStaffOrCron(req)
+  if (!gate.ok) return gate.response
+
   const { id } = await params
   try {
     const summary = await runEnrichment({ trigger: 'single', leadId: id })
