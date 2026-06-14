@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useState, useMemo } from 'react'
 import dynamic from 'next/dynamic'
+import { Crosshair, RefreshCw, Layers, Map as MapIcon } from 'lucide-react'
 import { supabase, type Lead, type ActionRec } from '@/lib/supabase'
 import {
   ModelStatusBarSkeleton,
@@ -9,6 +10,17 @@ import {
   MapSkeleton,
 } from '@/components/intel/Skeletons'
 import { ActionIcon } from '@/components/intel/icons'
+import RollupPanels from '@/components/intel/RollupPanels'
+import ParcelTable from '@/components/intel/ParcelTable'
+import AlertsFeed from '@/components/intel/AlertsFeed'
+import {
+  assessEfb,
+  effectiveRisk,
+  SPRAY_META,
+  type EfbFactor,
+} from '@/lib/efb/scoring'
+import { acresAtRisk, actionOf } from '@/lib/efb/analytics'
+import type { RiskMetric, Basemap, SizeMode } from '@/components/intel/RiskMap'
 
 // Leaflet touches `window`, so load the map client-side only with a skeleton
 // fallback while its chunk hydrates.
@@ -24,6 +36,20 @@ const ACTION_CONFIG: Record<ActionRec, { label: string; bg: string; border: stri
   MONITOR:     { label: 'Monitor',     bg: 'bg-green-50',  border: 'border-green-200',  text: 'text-green-700',  dot: 'bg-green-500'  },
 }
 
+const METRICS: { key: RiskMetric; label: string }[] = [
+  { key: 'composite', label: 'Composite' },
+  { key: 'weather', label: 'Weather' },
+  { key: 'wetness', label: 'Leaf wetness' },
+  { key: 'health', label: 'Canopy stress' },
+  { key: 'ml', label: 'ML model' },
+]
+
+const BASEMAPS: { key: Basemap; label: string }[] = [
+  { key: 'satellite', label: 'Satellite' },
+  { key: 'streets', label: 'Streets' },
+  { key: 'terrain', label: 'Terrain' },
+]
+
 export default function IntelPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
@@ -31,27 +57,70 @@ export default function IntelPage() {
   const [selected, setSelected] = useState<Lead | null>(null)
   const [showMap, setShowMap] = useState(true)
   const [showRiskOverlay, setShowRiskOverlay] = useState(true)
+  const [metric, setMetric] = useState<RiskMetric>('composite')
+  const [basemap, setBasemap] = useState<Basemap>('satellite')
+  const [sizeBy, setSizeBy] = useState<SizeMode>('risk')
+  const [flyToTop, setFlyToTop] = useState(0)
+  const [recomputing, setRecomputing] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
 
-  useEffect(() => {
-    supabase
+  const load = useCallback(async () => {
+    const { data } = await supabase
       .from('leads')
       .select('*')
       .eq('vertical', 'ag_spray')
       .not('composite_efb_risk', 'is', null)
       .order('composite_efb_risk', { ascending: false })
-      .then(({ data }) => {
-        setLeads(data ?? [])
-        setLoading(false)
-      })
+    setLeads(data ?? [])
+    setLoading(false)
   }, [])
+
+  useEffect(() => {
+    load()
+    let channel: ReturnType<typeof supabase.channel> | null = null
+    try {
+      channel = supabase
+        .channel('intel-leads')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, load)
+        .subscribe()
+    } catch {
+      /* realtime optional */
+    }
+    return () => {
+      if (channel) supabase.removeChannel(channel)
+    }
+  }, [load])
+
+  async function recompute() {
+    setRecomputing(true)
+    setMessage(null)
+    try {
+      const res = await fetch('/api/efb/recompute?limit=300', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok || json.ok === false) {
+        setMessage(`Recompute failed: ${json.error ?? res.statusText}`)
+      } else {
+        setMessage(
+          `Recomputed ${json.parcelsProcessed} parcels · ${json.parcelsUpdated} updated · ` +
+            `${json.treatNow} treat-now · ${json.alertsRaised} alert(s) · ${(json.durationMs / 1000).toFixed(1)}s` +
+            (json.writeMode === 'none' ? ' (read-only — configure a write key)' : '')
+        )
+      }
+      await load()
+    } catch (err: any) {
+      setMessage(`Recompute failed: ${String(err?.message ?? err)}`)
+    } finally {
+      setRecomputing(false)
+    }
+  }
 
   const crops = useMemo(() => {
     const set = new Set(leads.map(l => l.primary_crop).filter(Boolean) as string[])
     return ['all', ...Array.from(set).sort()]
   }, [leads])
 
-  const filtered = useMemo(() =>
-    crop === 'all' ? leads : leads.filter(l => l.primary_crop === crop),
+  const filtered = useMemo(
+    () => (crop === 'all' ? leads : leads.filter(l => l.primary_crop === crop)),
     [leads, crop]
   )
 
@@ -60,87 +129,120 @@ export default function IntelPage() {
     [filtered]
   )
 
+  const kpis = useMemo(() => {
+    const n = filtered.length
+    const risks = filtered.map(effectiveRisk)
+    const avg = n ? Math.round(risks.reduce((s, r) => s + r, 0) / n) : 0
+    const critical = filtered.filter(l => effectiveRisk(l) >= 75).length
+    const rising = filtered.filter(l => l.risk_trend === 'rising').length
+    const treat = filtered.filter(l => actionOf(l) === 'TREAT_NOW').length
+    return { n, avg, critical, rising, treat, acres: acresAtRisk(filtered) }
+  }, [filtered])
+
   const grouped = (['TREAT_NOW', 'SCOUT_NOW', 'CONTACT_NOW', 'MONITOR'] as ActionRec[]).reduce(
     (acc, action) => {
-      acc[action] = filtered.filter(l => l.action_recommendation === action)
+      acc[action] = filtered.filter(l => actionOf(l) === action)
       return acc
     },
     {} as Record<ActionRec, Lead[]>
   )
 
-  const withoutRec = filtered.filter(l => !l.action_recommendation)
-
   return (
-    <div className="p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade">
-      <div className="flex items-start justify-between mb-6">
+    <div className="p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">EFB Intelligence Hub</h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            Composite risk scores from 10m CDL · PRISM weather · ML model · NDRE trends
+            Composite risk from 10m CDL · PRISM weather · leaf-wetness · NDRE trend · ML model
           </p>
         </div>
-        <select
-          value={crop}
-          onChange={e => setCrop(e.target.value)}
-          className="tap text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
-        >
-          {crops.map(c => <option key={c} value={c}>{c === 'all' ? 'All Crops' : c}</option>)}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            value={crop}
+            onChange={e => setCrop(e.target.value)}
+            className="tap text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            {crops.map(c => <option key={c} value={c}>{c === 'all' ? 'All Crops' : c}</option>)}
+          </select>
+          <button
+            onClick={recompute}
+            disabled={recomputing}
+            className="tap inline-flex items-center gap-1.5 text-sm bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg px-4 py-2 transition-colors disabled:opacity-60 shadow-card"
+          >
+            <RefreshCw size={15} className={recomputing ? 'animate-spin' : ''} />
+            {recomputing ? 'Recomputing…' : 'Recompute risk'}
+          </button>
+        </div>
       </div>
 
-      {/* Model status bar */}
-      {loading ? (
-        <ModelStatusBarSkeleton />
-      ) : (
-        <div className="bg-slate-800 text-white rounded-xl px-5 py-3 mb-6 flex flex-wrap gap-6 text-sm">
-          <Stat label="Parcels Analyzed" value={filtered.length} />
-          <Stat label="High Risk (≥75)" value={filtered.filter(l => (l.composite_efb_risk ?? 0) >= 75).length} />
-          <Stat label="Avg EFB Risk" value={
-            filtered.length
-              ? Math.round(filtered.reduce((s, l) => s + (l.composite_efb_risk ?? 0), 0) / filtered.length)
-              : '—'
-          } />
-          <Stat label="ML Covered" value={`${filtered.filter(l => l.ml_efb_risk !== null).length} parcels`} />
-          <Stat label="Avg ML Confidence" value={
-            filtered.filter(l => l.ml_confidence !== null).length
-              ? `${Math.round(filtered.filter(l => l.ml_confidence !== null).reduce((s, l) => s + (l.ml_confidence ?? 0), 0) / filtered.filter(l => l.ml_confidence !== null).length * 100)}%`
-              : '—'
-          } />
+      {message && (
+        <div className="text-sm rounded-lg border border-brand-200 bg-brand-50 text-brand-800 px-4 py-2.5">
+          {message}
         </div>
       )}
 
-      {/* Satellite risk map */}
-      <div className="mb-6">
+      {/* KPI bar */}
+      {loading ? (
+        <ModelStatusBarSkeleton />
+      ) : (
+        <div className="bg-slate-800 text-white rounded-xl px-5 py-3 flex flex-wrap gap-x-8 gap-y-2 text-sm">
+          <Stat label="Parcels" value={kpis.n} />
+          <Stat label="Avg EFB Risk" value={kpis.avg || '—'} />
+          <Stat label="Critical (≥75)" value={kpis.critical} />
+          <Stat label="Treat Now" value={kpis.treat} accent="text-red-300" />
+          <Stat label="Rising" value={kpis.rising} accent="text-amber-300" />
+          <Stat label="Acres at Risk" value={kpis.acres.toLocaleString()} />
+        </div>
+      )}
+
+      {/* Satellite risk map + controls */}
+      <div>
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-slate-700">Satellite Risk Map</h2>
             {!loading && (
-              <span className="text-xs text-slate-400">
-                {mappedCount} of {filtered.length} parcels mapped
-              </span>
+              <span className="text-xs text-slate-400">{mappedCount} of {filtered.length} mapped</span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {showMap && (
-              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
-                {([['Risk heatmap', true], ['Satellite', false]] as const).map(([label, on]) => (
-                  <button
-                    key={label}
-                    onClick={() => setShowRiskOverlay(on)}
-                    className={`tap inline-flex items-center justify-center text-xs px-3 py-1 rounded-md font-medium transition-colors ${
-                      showRiskOverlay === on
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <>
+                <Segmented<RiskMetric>
+                  icon={<Layers size={13} />}
+                  value={metric}
+                  options={METRICS}
+                  onChange={setMetric}
+                />
+                <Segmented<Basemap>
+                  icon={<MapIcon size={13} />}
+                  value={basemap}
+                  options={BASEMAPS}
+                  onChange={setBasemap}
+                />
+                <button
+                  onClick={() => setSizeBy(s => (s === 'risk' ? 'acreage' : 'risk'))}
+                  className="tap text-xs px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-400 transition-colors"
+                  title="Toggle marker sizing"
+                >
+                  Size: {sizeBy === 'risk' ? 'Risk' : 'Acreage'}
+                </button>
+                <button
+                  onClick={() => setFlyToTop(n => n + 1)}
+                  className="tap inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-400 transition-colors"
+                >
+                  <Crosshair size={13} /> Hottest
+                </button>
+                <button
+                  onClick={() => setShowRiskOverlay(v => !v)}
+                  className="tap text-xs px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-400 transition-colors"
+                >
+                  {showRiskOverlay ? 'Hide risk' : 'Show risk'}
+                </button>
+              </>
             )}
             <button
               onClick={() => setShowMap(v => !v)}
-              className="tap inline-flex items-center justify-center text-xs px-3 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-400 transition-colors"
+              className="tap text-xs px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-400 transition-colors"
             >
               {showMap ? 'Hide map' : 'Show map'}
             </button>
@@ -155,14 +257,19 @@ export default function IntelPage() {
               selected={selected}
               onSelect={lead => setSelected(selected?.id === lead.id ? null : lead)}
               showRiskOverlay={showRiskOverlay}
+              metric={metric}
+              basemap={basemap}
+              sizeBy={sizeBy}
+              flyToTop={flyToTop}
             />
           ))}
       </div>
 
+      {/* Rollups + spray window */}
+      {!loading && filtered.length > 0 && <RollupPanels leads={filtered} />}
+
       {loading ? (
-        <div className="flex gap-5">
-          <IntelBoardSkeleton />
-        </div>
+        <IntelBoardSkeleton />
       ) : (
         <div className="flex gap-5">
           {/* Action columns */}
@@ -199,101 +306,61 @@ export default function IntelPage() {
           </div>
 
           {/* Detail panel */}
-          {selected && (
-            <div className="w-72 shrink-0 bg-white rounded-xl border border-slate-200 shadow-card p-5 space-y-4 self-start">
-              <div className="flex items-start justify-between">
-                <h3 className="font-semibold text-slate-900 text-sm leading-tight">
-                  {selected.business_name ?? selected.owner_name ?? 'Detail'}
-                </h3>
-                <button onClick={() => setSelected(null)} aria-label="Close detail" className="tap-sq inline-flex items-center justify-center text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
-              </div>
-
-              <div className="text-xs text-slate-500">{selected.city}, {selected.county} Co. · {selected.primary_crop}</div>
-
-              {/* Risk gauge */}
-              <div>
-                <div className="flex justify-between text-xs text-slate-500 mb-1">
-                  <span>Composite EFB Risk</span>
-                  <span className="font-bold text-slate-800">{selected.composite_efb_risk}/100</span>
-                </div>
-                <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      (selected.composite_efb_risk ?? 0) >= 75 ? 'bg-red-500' :
-                      (selected.composite_efb_risk ?? 0) >= 55 ? 'bg-orange-400' :
-                      (selected.composite_efb_risk ?? 0) >= 40 ? 'bg-yellow-400' : 'bg-green-400'
-                    }`}
-                    style={{ width: `${selected.composite_efb_risk ?? 0}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Breakdown */}
-              <div className="space-y-2 text-xs">
-                <Row label="Weather Risk" value={selected.efb_weather_risk} suffix="/100" />
-                <Row label="Leaf Wetness" value={selected.leaf_wetness_hours} suffix="h" />
-                <Row label="Wetness Anomaly" value={selected.wetness_anomaly_pct} suffix="% vs 10yr" />
-                <Row label="Orchard Health" value={selected.orchard_health_score} suffix="/100" />
-                <Row label="NDRE (mean)" value={selected.mean_ndre !== null ? selected.mean_ndre?.toFixed(3) : null} />
-                <Row label="NDRE Slope" value={selected.ndre_seasonal_slope !== null ? selected.ndre_seasonal_slope?.toFixed(5) : null} />
-              </div>
-
-              {selected.ml_efb_risk !== null && (
-                <div className="border-t border-slate-100 pt-3 space-y-2 text-xs">
-                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">ML Layer</div>
-                  <Row label="ML Risk" value={selected.ml_efb_risk} suffix="/100" />
-                  <Row label="Confidence" value={selected.ml_confidence !== null ? `${((selected.ml_confidence ?? 0) * 100).toFixed(0)}` : null} suffix="%" />
-                  <Row label="Model" value={selected.model_version} />
-                </div>
-              )}
-
-              <div className="border-t border-slate-100 pt-3 space-y-2 text-xs">
-                <Row label="Est. Acreage" value={selected.est_acreage} suffix=" acres" />
-                <Row label="Distance" value={selected.distance_to_canby_mi !== null ? selected.distance_to_canby_mi?.toFixed(1) : null} suffix=" mi" />
-                <Row label="Lead Score" value={selected.lead_score} />
-                <Row label="LOI Status" value={selected.loi_status?.replace(/_/g, ' ')} />
-              </div>
-
-              <div className="pt-1">
-                <div className="text-xs text-slate-400">
-                  Phone: {selected.phone ?? 'Not available'}<br />
-                  Email: {selected.email ?? 'Not available'}
-                </div>
-              </div>
-            </div>
-          )}
+          {selected && <DetailPanel lead={selected} onClose={() => setSelected(null)} />}
         </div>
       )}
 
-      {/* Unscored leads */}
-      {withoutRec.length > 0 && (
-        <div className="mt-6">
-          <h2 className="text-sm font-semibold text-slate-500 mb-3">
-            Ag Leads Without Action Classification ({withoutRec.length})
-          </h2>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4">
-            <div className="flex flex-wrap gap-2">
-              {withoutRec.map(lead => (
-                <div
-                  key={lead.id}
-                  className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600"
-                >
-                  {lead.business_name ?? lead.owner_name ?? 'Unknown'} · EFB {lead.composite_efb_risk ?? '?'}
-                </div>
-              ))}
-            </div>
+      {/* Alerts + parcel register */}
+      {!loading && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-2">
+            <ParcelTable
+              leads={filtered}
+              selected={selected}
+              onSelect={lead => setSelected(selected?.id === lead.id ? null : lead)}
+            />
           </div>
+          <AlertsFeed />
         </div>
       )}
     </div>
   )
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+function Stat({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
   return (
     <div>
       <div className="text-xs text-slate-400">{label}</div>
-      <div className="text-lg font-bold">{value}</div>
+      <div className={`text-lg font-bold ${accent ?? ''}`}>{value}</div>
+    </div>
+  )
+}
+
+function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  icon,
+}: {
+  value: T
+  options: { key: T; label: string }[]
+  onChange: (v: T) => void
+  icon?: React.ReactNode
+}) {
+  return (
+    <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
+      {icon && <span className="text-slate-400 px-1.5">{icon}</span>}
+      {options.map(o => (
+        <button
+          key={o.key}
+          onClick={() => onChange(o.key)}
+          className={`tap text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
+            value === o.key ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   )
 }
@@ -309,7 +376,8 @@ function RiskCard({
   onClick: () => void
   cfg: { bg: string; border: string; dot: string }
 }) {
-  const risk = lead.composite_efb_risk ?? 0
+  const risk = effectiveRisk(lead)
+  const trend = lead.risk_trend
   return (
     <div
       onClick={onClick}
@@ -320,23 +388,113 @@ function RiskCard({
         <div className="text-xs font-semibold text-slate-800 leading-tight truncate">
           {lead.business_name ?? lead.owner_name ?? 'Unknown'}
         </div>
-        <div className="text-xs font-bold text-slate-600 shrink-0">{risk}</div>
+        <div className="text-xs font-bold text-slate-600 shrink-0 flex items-center gap-1">
+          {trend === 'rising' && <span className="text-red-500">▲</span>}
+          {trend === 'falling' && <span className="text-green-500">▼</span>}
+          {risk}
+        </div>
       </div>
-      <div className="text-xs text-slate-400 mb-2">
-        {lead.city} · {lead.primary_crop ?? 'Ag'}
-      </div>
+      <div className="text-xs text-slate-400 mb-2">{lead.city} · {lead.primary_crop ?? 'Ag'}</div>
       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full ${cfg.dot}`}
-          style={{ width: `${risk}%` }}
-        />
+        <div className={`h-full rounded-full ${cfg.dot}`} style={{ width: `${risk}%` }} />
       </div>
-      {lead.ml_confidence !== null && (
-        <div className="text-xs text-slate-400 mt-1.5">
-          ML conf: {((lead.ml_confidence ?? 0) * 100).toFixed(0)}%
-          {lead.efb_weather_risk !== null && ` · ☁️ ${lead.efb_weather_risk}`}
+    </div>
+  )
+}
+
+function DetailPanel({ lead, onClose }: { lead: Lead; onClose: () => void }) {
+  const assessment = useMemo(() => assessEfb(lead), [lead])
+  const risk = effectiveRisk(lead)
+  const factors: EfbFactor[] = lead.efb_factors ?? assessment.factors
+  const spray = lead.spray_window_status ?? assessment.sprayWindow
+  const confidence = lead.efb_confidence ?? assessment.confidence
+
+  return (
+    <div className="w-80 shrink-0 bg-white rounded-xl border border-slate-200 shadow-card p-5 space-y-4 self-start">
+      <div className="flex items-start justify-between">
+        <h3 className="font-semibold text-slate-900 text-sm leading-tight">
+          {lead.business_name ?? lead.owner_name ?? 'Detail'}
+        </h3>
+        <button onClick={onClose} aria-label="Close detail" className="tap-sq text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+      </div>
+
+      <div className="text-xs text-slate-500">
+        {[lead.city, lead.county && `${lead.county} Co.`, lead.primary_crop].filter(Boolean).join(' · ')}
+      </div>
+
+      {/* Risk gauge */}
+      <div>
+        <div className="flex justify-between text-xs text-slate-500 mb-1">
+          <span>Composite EFB Risk</span>
+          <span className="font-bold text-slate-800 flex items-center gap-1">
+            {lead.risk_trend === 'rising' && <span className="text-red-500">▲</span>}
+            {lead.risk_trend === 'falling' && <span className="text-green-500">▼</span>}
+            {risk}/100
+          </span>
+        </div>
+        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full ${
+              risk >= 75 ? 'bg-red-500' : risk >= 55 ? 'bg-orange-400' : risk >= 40 ? 'bg-yellow-400' : 'bg-green-400'
+            }`}
+            style={{ width: `${risk}%` }}
+          />
+        </div>
+        <div className="flex items-center justify-between mt-2 text-xs">
+          <span className={`px-2 py-0.5 rounded-full border font-medium ${SPRAY_META[spray].cls}`}>
+            Spray: {SPRAY_META[spray].label}
+          </span>
+          <span className="text-slate-400">Confidence {Math.round(confidence * 100)}%</span>
+        </div>
+      </div>
+
+      {/* Explainable factor breakdown */}
+      <div className="space-y-2">
+        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Why this score</div>
+        {factors.map(f => (
+          <div key={f.key}>
+            <div className="flex justify-between text-xs mb-0.5">
+              <span className={`${f.present ? 'text-slate-600' : 'text-slate-400 italic'}`}>
+                {f.label} {!f.present && '(est.)'}
+              </span>
+              <span className="text-slate-500">
+                <span className="text-slate-400">{f.detail}</span> · +{f.contribution}
+              </span>
+            </div>
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full rounded-full bg-slate-400" style={{ width: `${f.value * 100}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {lead.ml_efb_risk != null && (
+        <div className="border-t border-slate-100 pt-3 space-y-2 text-xs">
+          <div className="font-semibold text-slate-500 uppercase tracking-wide">ML Layer</div>
+          <Row label="ML Risk" value={lead.ml_efb_risk} suffix="/100" />
+          <Row label="Confidence" value={lead.ml_confidence != null ? `${(lead.ml_confidence * 100).toFixed(0)}` : null} suffix="%" />
+          <Row label="Model" value={lead.model_version} />
         </div>
       )}
+
+      <div className="border-t border-slate-100 pt-3 space-y-2 text-xs">
+        <Row label="Est. Acreage" value={lead.est_acreage} suffix=" acres" />
+        <Row label="Distance" value={lead.distance_to_canby_mi != null ? lead.distance_to_canby_mi.toFixed(1) : null} suffix=" mi" />
+        <Row label="Lead Score" value={lead.lead_score} />
+        <Row label="LOI Status" value={lead.loi_status?.replace(/_/g, ' ')} />
+        {lead.efb_recomputed_at && (
+          <Row label="Recomputed" value={new Date(lead.efb_recomputed_at).toLocaleDateString()} />
+        )}
+      </div>
+
+      <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 leading-relaxed">
+        {assessment.summary}
+      </div>
+
+      <div className="text-xs text-slate-400">
+        Phone: {lead.phone ?? 'Not available'}<br />
+        Email: {lead.email ?? 'Not available'}
+      </div>
     </div>
   )
 }

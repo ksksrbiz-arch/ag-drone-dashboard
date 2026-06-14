@@ -21,6 +21,17 @@ async function handle(req: NextRequest) {
   try {
     const summary = await runEnrichment({ trigger, limit })
 
+    // On the daily cron, also recompute EFB satellite risk for every parcel —
+    // folded into the existing schedule so Hobby's one-cron limit still holds.
+    if (isCron) {
+      try {
+        const { runEfbRecompute } = await import('@/lib/efb/engine')
+        await runEfbRecompute({ trigger: 'cron', limit: 500 })
+      } catch {
+        /* EFB recompute is best-effort on the shared cron */
+      }
+    }
+
     // On the daily cron, post the ops digest to Slack (best-effort). Folds the
     // digest into the existing cron so we don't need a second schedule.
     if (isCron) {

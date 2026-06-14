@@ -83,6 +83,13 @@ export interface Lead {
   ndre_seasonal_slope: number | null
   action_recommendation: ActionRec | null
   model_version: string | null
+  // ─── EFB Intelligence Engine fields (from src/lib/efb pipeline) ──────────
+  efb_factors?: import('./efb/scoring').EfbFactor[] | null
+  efb_confidence?: number | null
+  spray_window_status?: import('./efb/scoring').SprayWindow | null
+  spray_window_score?: number | null
+  risk_trend?: 'rising' | 'falling' | 'steady' | null
+  efb_recomputed_at?: string | null
   created_at: string
   updated_at: string
   context: Record<string, unknown> | null
@@ -115,6 +122,20 @@ export interface EnrichmentRun {
   duration_ms: number | null
   error: string | null
   summary: Record<string, unknown> | null
+}
+
+export interface EfbRun {
+  id: string
+  started_at: string
+  finished_at: string | null
+  status: 'running' | 'completed' | 'failed'
+  trigger: 'cron' | 'manual' | null
+  parcels_processed: number
+  parcels_updated: number
+  treat_now: number
+  alerts_raised: number
+  duration_ms: number | null
+  error: string | null
 }
 
 export interface Job {
