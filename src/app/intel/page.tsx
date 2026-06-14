@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, useMemo } from 'react'
 import dynamic from 'next/dynamic'
-import { Crosshair, RefreshCw, Layers, Map as MapIcon } from 'lucide-react'
+import { Crosshair, RefreshCw, Layers, Map as MapIcon, MapPin } from 'lucide-react'
 import { supabase, type Lead, type ActionRec } from '@/lib/supabase'
 import {
   ModelStatusBarSkeleton,
@@ -62,6 +62,7 @@ export default function IntelPage() {
   const [sizeBy, setSizeBy] = useState<SizeMode>('risk')
   const [flyToTop, setFlyToTop] = useState(0)
   const [recomputing, setRecomputing] = useState(false)
+  const [geocoding, setGeocoding] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -111,6 +112,28 @@ export default function IntelPage() {
       setMessage(`Recompute failed: ${String(err?.message ?? err)}`)
     } finally {
       setRecomputing(false)
+    }
+  }
+
+  async function geocode() {
+    setGeocoding(true)
+    setMessage(null)
+    try {
+      const res = await fetch('/api/efb/geocode?limit=1000', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok || json.ok === false) {
+        setMessage(`Geocoding failed: ${json.error ?? res.statusText}`)
+      } else {
+        setMessage(
+          `Geocoded ${json.updated} of ${json.attempted} parcels (${json.matched} matched) · ${(json.durationMs / 1000).toFixed(1)}s` +
+            (json.writeMode === 'none' ? ' (read-only — configure a write key)' : '')
+        )
+      }
+      await load()
+    } catch (err: any) {
+      setMessage(`Geocoding failed: ${String(err?.message ?? err)}`)
+    } finally {
+      setGeocoding(false)
     }
   }
 
@@ -165,6 +188,15 @@ export default function IntelPage() {
             {crops.map(c => <option key={c} value={c}>{c === 'all' ? 'All Crops' : c}</option>)}
           </select>
           <button
+            onClick={geocode}
+            disabled={geocoding}
+            className="tap inline-flex items-center gap-1.5 text-sm border border-slate-200 bg-white hover:border-slate-400 text-slate-700 font-medium rounded-lg px-4 py-2 transition-colors disabled:opacity-60"
+            title="Backfill parcel coordinates from street addresses (free U.S. Census geocoder)"
+          >
+            <MapPin size={15} className={geocoding ? 'animate-pulse' : ''} />
+            {geocoding ? 'Geocoding…' : 'Geocode parcels'}
+          </button>
+          <button
             onClick={recompute}
             disabled={recomputing}
             className="tap inline-flex items-center gap-1.5 text-sm bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg px-4 py-2 transition-colors disabled:opacity-60 shadow-card"
@@ -178,6 +210,17 @@ export default function IntelPage() {
       {message && (
         <div className="text-sm rounded-lg border border-brand-200 bg-brand-50 text-brand-800 px-4 py-2.5">
           {message}
+        </div>
+      )}
+
+      {!loading && filtered.length > 0 && mappedCount === 0 && (
+        <div className="text-sm rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-4 py-2.5 flex items-center gap-2">
+          <MapPin size={16} className="shrink-0" />
+          None of these parcels have coordinates yet, so the map can&apos;t plot them. Click{' '}
+          <button onClick={geocode} disabled={geocoding} className="font-semibold underline disabled:opacity-60">
+            Geocode parcels
+          </button>{' '}
+          to backfill lat/lon from their street addresses.
         </div>
       )}
 

@@ -25,6 +25,13 @@ async function handle(req: NextRequest) {
     // folded into the existing schedule so Hobby's one-cron limit still holds.
     if (isCron) {
       try {
+        // Geocode any parcels still missing coordinates, then recompute EFB risk.
+        const { runGeocodeBackfill } = await import('@/lib/efb/geocode')
+        await runGeocodeBackfill({ trigger: 'cron', limit: 1000 })
+      } catch {
+        /* geocoding is best-effort on the shared cron */
+      }
+      try {
         const { runEfbRecompute } = await import('@/lib/efb/engine')
         await runEfbRecompute({ trigger: 'cron', limit: 500 })
       } catch {
