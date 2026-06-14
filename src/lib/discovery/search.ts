@@ -21,8 +21,32 @@ export interface SearchHit {
 const BRAVE_URL = 'https://api.search.brave.com/res/v1/web/search'
 const TAVILY_URL = 'https://api.tavily.com/search'
 
+/** The optional Cloudflare Worker that runs search server-side (keys on CF). */
+export function workerConfigured(): boolean {
+  return Boolean(process.env.DISCOVERY_WORKER_URL && process.env.DISCOVERY_WORKER_SECRET)
+}
+
 export function searchConfigured(): boolean {
-  return Boolean(process.env.BRAVE_API_KEY || process.env.TAVILY_API_KEY)
+  return Boolean(process.env.BRAVE_API_KEY || process.env.TAVILY_API_KEY || workerConfigured())
+}
+
+/** Run all queries through the Cloudflare Worker (Brave+Tavily + KV cache). */
+async function workerSearch(queries: string[], perQuery: number): Promise<SearchHit[]> {
+  try {
+    const res = await fetch(process.env.DISCOVERY_WORKER_URL!, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.DISCOVERY_WORKER_SECRET}`,
+      },
+      body: JSON.stringify({ queries, perQuery }),
+    })
+    if (!res.ok) return []
+    const json = await res.json()
+    return Array.isArray(json?.hits) ? (json.hits as SearchHit[]) : []
+  } catch {
+    return []
+  }
 }
 
 /** Location suffix appended to each base query to keep hits in-area. */
@@ -104,6 +128,12 @@ export async function searchProspects(
   const suffix = locationSuffix()
   const perQuery = Math.min(10, Math.max(4, Math.ceil(limit / 2)))
   const queries = cat.queries.map(q => `${q} ${suffix}`.trim())
+
+  // Prefer the Cloudflare Worker (keys on CF + KV cache) when configured; it
+  // returns already-merged hits. Otherwise hit the providers directly.
+  if (workerConfigured()) {
+    return workerSearch(queries, perQuery)
+  }
 
   const batches = await Promise.all(
     queries.flatMap(q => [braveSearch(q, perQuery), tavilySearch(q, perQuery)])
