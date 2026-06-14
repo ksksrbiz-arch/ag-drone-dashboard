@@ -1,67 +1,64 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { Lead } from '@/lib/supabase'
 import type { ResearchResult } from './types'
-import { COMPANY_CONTEXT, EFFORT, MODEL } from './config'
+import { cheapComplete, extractJson } from '@/lib/ai/llm'
+import { COMPANY_CONTEXT } from './config'
 import { BUSINESS } from '@/lib/business'
 import { verticalGuidance } from './verticals'
 import { missingFields } from './completeness'
 
 // ─────────────────────────────────────────────────────────────────────────
-// AI web research + reasoning.
+// SSOT-grounded lead analysis (free models: Groq / OpenRouter).
 //
-// Uses Claude with the web-search server tool to research a single lead, then
-// reasons about the "best approach for us specifically". Returns a structured
-// object; never fabricates — unknown fields come back null with a confidence.
+// The previous version used Claude's web-search tool to *find* new facts. That
+// requires Anthropic credits and can drift. This version runs on the free,
+// OpenAI-compatible models the project already has (via src/lib/ai/llm.ts) and
+// is deliberately constrained: the structured lead record is the SINGLE SOURCE
+// OF TRUTH. The model has no web access and MUST NOT invent facts — it only
+// normalizes values already present and produces advisory outputs (how to
+// approach this grower, best contact method, a short summary).
 //
-// The request body is assembled as a plain object and passed through the SDK so
-// the pipeline stays robust to SDK version drift on the newest params
-// (adaptive thinking, effort, web-search tool version).
+// Real contact-data gaps (phone/email) are filled by the Apollo booster in the
+// engine — an actual data source — never hallucinated here.
 // ─────────────────────────────────────────────────────────────────────────
 
-let client: Anthropic | null = null
-function getClient(): Anthropic {
-  if (!client) client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  return client
-}
-
-const SYSTEM = `You are a B2B lead-research analyst for an agricultural drone-services company.
+const SYSTEM = `You are a B2B lead-analysis assistant for an agricultural drone-services company.
 
 ${COMPANY_CONTEXT}
 
-Your job: research ONE lead using web search, then return verified facts plus a
-recommendation tailored to this company. Rules:
-- Use web search to find and corroborate the business, owner/operator, crops,
-  acreage, and current contact info (phone, email, website).
-- NEVER invent or guess. If you cannot verify a value, return null for it.
-- Prefer recent, authoritative sources (the business's own site, Google Business,
-  county/USDA/extension records, ag directories, LinkedIn).
-- "recommended_approach" must be specific to THIS lead and to our drone services
-  in ${BUSINESS.region} — what to lead with, which service fits, timing, and the
-  single best way to make contact. (Vertical-specific guidance follows below.)
-- Report a calibrated overall confidence in [0,1].
+You are given the SINGLE SOURCE OF TRUTH for ONE lead: the structured data the
+company already holds. You have NO web access and cannot look anything up.
 
-Return ONLY a single fenced \`\`\`json code block, no prose before or after, with
-exactly these keys:
+HARD RULES — follow exactly to avoid mistakes:
+- NEVER invent, guess, complete, or infer any factual field. Specifically:
+  business name, owner, contact name, phone, email, website, acreage, address.
+  If a value is not present in the data below, it stays unknown — do not output it.
+- You MAY lightly normalize the formatting of a value that IS present (e.g. tidy
+  a crop label, title-case an owner name) but never change its meaning.
+- Your job is ADVISORY, grounded strictly in the provided facts: given what is
+  known about this grower and our drone spray/scouting services in
+  ${BUSINESS.region}, recommend what to lead with, the single best way to make
+  contact given the data we have, and a one- or two-sentence summary.
+- "confidence" (0..1) = how well the KNOWN data supports a solid outreach plan.
+  Sparse data → low confidence. Do not inflate it.
+
+Return ONLY a single JSON object, no prose, with exactly these keys:
 {
-  "business_name": string|null,
-  "owner_name": string|null,
-  "contact_name": string|null,
   "primary_crop": string|null,
   "crop_types": string[]|null,
-  "phone": string|null,
-  "email": string|null,
-  "website": string|null,
-  "est_acreage": number|null,
   "recommended_approach": string|null,
   "best_contact_method": string|null,
   "research_summary": string|null,
-  "confidence": number,
-  "field_sources": { [field: string]: string }
+  "confidence": number
 }`
 
-function leadBrief(lead: Lead): string {
-  const lines = [
-    `Vertical: ${lead.vertical}`,
+function field(label: string, v: unknown): string | null {
+  if (v == null || (typeof v === 'string' && v.trim() === '')) return null
+  return `${label}: ${v}`
+}
+
+function ssotBrief(lead: Lead): string {
+  const known = [
+    field('Vertical', lead.vertical),
     field('Business name', lead.business_name),
     field('Owner', lead.owner_name),
     field('Contact', lead.contact_name),
@@ -80,86 +77,39 @@ function leadBrief(lead: Lead): string {
   ].filter(Boolean)
 
   const gaps = missingFields(lead)
-  return `Research this lead and fill gaps. Known data:
-${lines.join('\n')}
+  return `SINGLE SOURCE OF TRUTH — the only facts you may rely on:
+${known.join('\n') || '(no data)'}
 
-Fields still missing (prioritize verifying these): ${
-    gaps.length ? gaps.join(', ') : '(none — confirm and refresh existing values)'
-  }`
+Unknown fields (leave these unknown — do NOT fabricate them): ${
+    gaps.length ? gaps.join(', ') : '(none missing)'
+  }
+
+Using ONLY the facts above, produce the advisory JSON.`
 }
-
-function field(label: string, v: unknown): string | null {
-  if (v == null || (typeof v === 'string' && v.trim() === '')) return null
-  return `${label}: ${v}`
-}
-
-const MAX_SERVER_TOOL_TURNS = 6
 
 export async function researchLead(lead: Lead): Promise<ResearchResult> {
-  const anthropic = getClient()
-
-  // Assembled as `any` so newer fields (effort, adaptive thinking, web-search
-  // tool version) pass through regardless of the installed SDK's typings.
-  const body: Record<string, unknown> = {
-    model: MODEL,
-    max_tokens: 4000,
-    thinking: { type: 'adaptive' },
-    output_config: { effort: EFFORT },
+  const text = await cheapComplete({
     system: SYSTEM + verticalGuidance(lead.vertical),
-    tools: [{ type: 'web_search_20260209', name: 'web_search' }],
-    messages: [{ role: 'user', content: leadBrief(lead) }],
-  }
+    user: ssotBrief(lead),
+    json: true,
+    maxTokens: 900,
+    temperature: 0.2,
+  })
 
-  let aiCalls = 0
-  let response: any
-  // Server-side tools run an agentic loop; on pause_turn we re-send to resume.
-  for (let turn = 0; turn < MAX_SERVER_TOOL_TURNS; turn++) {
-    aiCalls++
-    response = await (anthropic.messages.create as any)(body)
-    if (response?.stop_reason !== 'pause_turn') break
-    ;(body.messages as unknown[]).push({
-      role: 'assistant',
-      content: response.content,
-    })
-  }
-
-  const text = extractText(response)
-  const parsed = parseJsonBlock(text)
-  return normalize(parsed, aiCalls)
+  const raw = extractJson<Record<string, unknown>>(text) ?? {}
+  return normalize(raw, lead)
 }
 
-function extractText(response: any): string {
-  if (!response?.content || !Array.isArray(response.content)) return ''
-  return response.content
-    .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
-    .map((b: any) => b.text)
-    .join('\n')
-}
-
-function parseJsonBlock(text: string): Record<string, unknown> {
-  if (!text) return {}
-  // Prefer a fenced ```json block; fall back to the last {...} span.
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  const candidate = fence
-    ? fence[1]
-    : (() => {
-        const start = text.indexOf('{')
-        const end = text.lastIndexOf('}')
-        return start >= 0 && end > start ? text.slice(start, end + 1) : ''
-      })()
-  if (!candidate) return {}
-  try {
-    return JSON.parse(candidate)
-  } catch {
-    return {}
-  }
-}
-
-function normalize(raw: Record<string, unknown>, aiCalls: number): ResearchResult {
+function normalize(raw: Record<string, unknown>, lead: Lead): ResearchResult {
   const str = (v: unknown): string | null => {
     if (typeof v !== 'string') return null
     const t = v.trim()
     return t && t.toLowerCase() !== 'null' ? t : null
+  }
+  const arr = (v: unknown): string[] | null => {
+    if (!Array.isArray(v)) return null
+    const cleaned = v.map(x => str(x)).filter((x): x is string => !!x)
+    return cleaned.length ? cleaned : null
   }
   const num = (v: unknown): number | null => {
     if (typeof v === 'number' && !Number.isNaN(v)) return v
@@ -169,31 +119,33 @@ function normalize(raw: Record<string, unknown>, aiCalls: number): ResearchResul
     }
     return null
   }
-  const arr = (v: unknown): string[] | null => {
-    if (!Array.isArray(v)) return null
-    const cleaned = v.map(x => str(x)).filter((x): x is string => !!x)
-    return cleaned.length ? cleaned : null
-  }
   const conf = num(raw.confidence)
 
+  // Crop may be normalized by the model, but only when the lead already had a
+  // crop — never let the model conjure a crop where the SSOT has none.
+  const primaryCrop = lead.primary_crop ? str(raw.primary_crop) : null
+  const cropTypes = lead.primary_crop ? arr(raw.crop_types) : null
+
   return {
-    business_name: str(raw.business_name),
-    owner_name: str(raw.owner_name),
-    contact_name: str(raw.contact_name),
-    primary_crop: str(raw.primary_crop),
-    crop_types: arr(raw.crop_types),
-    phone: str(raw.phone),
-    email: str(raw.email),
-    website: str(raw.website),
-    est_acreage: num(raw.est_acreage),
+    // Identity & contact facts are NEVER taken from the model — only the SSOT
+    // (and the engine's Apollo booster) may set these. Returning null here means
+    // the engine leaves the existing authoritative values untouched.
+    business_name: null,
+    owner_name: null,
+    contact_name: null,
+    phone: null,
+    email: null,
+    website: null,
+    est_acreage: null,
+    // Crop normalization is allowed (derived from an existing value).
+    primary_crop: primaryCrop,
+    crop_types: cropTypes,
+    // Advisory outputs grounded in the SSOT.
     recommended_approach: str(raw.recommended_approach),
     best_contact_method: str(raw.best_contact_method),
     research_summary: str(raw.research_summary),
     confidence: conf == null ? 0 : Math.min(1, Math.max(0, conf)),
-    field_sources:
-      raw.field_sources && typeof raw.field_sources === 'object'
-        ? (raw.field_sources as Record<string, string>)
-        : {},
-    ai_calls: aiCalls,
+    field_sources: { recommended_approach: 'reasoning over CRM data (single source of truth)' },
+    ai_calls: 1,
   }
 }
