@@ -56,10 +56,10 @@ export default function PipelinePage() {
     .reduce((s, l) => s + (l.est_annual_revenue ?? 0), 0)
 
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto">
+    <div className="p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">LOI Pipeline</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">LOI Pipeline</h1>
           <p className="text-slate-500 text-sm mt-0.5">Drag-free Kanban — click cards to advance stage</p>
         </div>
         <div className="text-sm bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-lg font-medium">
@@ -68,8 +68,13 @@ export default function PipelinePage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-48 text-slate-400 text-sm">
-          Loading pipeline…
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-9 skeleton" />
+              <div className="h-24 skeleton" /><div className="h-24 skeleton" />
+            </div>
+          ))}
         </div>
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -126,7 +131,7 @@ function LeadCard({
     efbRisk !== null && efbRisk >= 40 ? 'text-yellow-600' : 'text-green-600'
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm">
+    <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-card hover:shadow-card-hover transition-shadow">
       <div className="flex items-start justify-between gap-1 mb-1.5">
         <div className="text-xs font-semibold text-slate-800 leading-tight truncate">
           {VERTICAL_ICONS[lead.vertical]} {lead.business_name ?? lead.owner_name ?? 'Unknown'}

@@ -82,8 +82,17 @@ export default function OverviewPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-slate-400 text-sm">Loading dashboard…</div>
+      <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
+        <div className="h-7 w-56 skeleton" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-24 skeleton" />)}
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-20 skeleton" />)}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="h-64 skeleton" /><div className="h-64 skeleton" />
+        </div>
       </div>
     )
   }
@@ -91,9 +100,9 @@ export default function OverviewPage() {
   const k = kpis!
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-fade">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Operations Overview</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Operations Overview</h1>
         <p className="text-slate-500 text-sm mt-0.5">1COMMERCE Precision Ag · Canby, OR</p>
       </div>
 
@@ -123,7 +132,7 @@ export default function OverviewPage() {
       {/* Leads by vertical + top leads */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Vertical breakdown */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
           <h2 className="text-sm font-semibold text-slate-700 mb-4">Leads by Vertical</h2>
           <div className="space-y-3">
             {Object.entries(k.leadsByVertical).map(([vert, count]) => {
@@ -147,7 +156,7 @@ export default function OverviewPage() {
         </div>
 
         {/* Top scored leads */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
           <h2 className="text-sm font-semibold text-slate-700 mb-4">Top Priority Leads</h2>
           <div className="space-y-2">
             {k.topLeads.map(lead => (
@@ -173,7 +182,7 @@ export default function OverviewPage() {
       </div>
 
       {/* Recent jobs */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
+      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
         <h2 className="text-sm font-semibold text-slate-700 mb-4">Recent Jobs</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -216,7 +225,7 @@ function KPICard({ label, value, sub, color }: { label: string; value: string | 
     purple: 'bg-purple-50 text-purple-700',
   }
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
+    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card hover:shadow-card-hover transition-shadow">
       <div className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full mb-3 ${colorMap[color]}`}>
         {label}
       </div>

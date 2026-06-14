@@ -76,10 +76,10 @@ export default function LeadsPage() {
   }, [leads, vertical, loiStatus, search, sortBy])
 
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto">
+    <div className="p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Lead Database</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Lead Database</h1>
           <p className="text-slate-500 text-sm mt-0.5">{filtered.length} leads matching filters</p>
         </div>
         <div className="text-sm text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-lg">
@@ -88,7 +88,7 @@ export default function LeadsPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex flex-wrap gap-3">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4 mb-5 flex flex-wrap gap-3">
         <input
           type="text"
           placeholder="Search name, city, crop…"
@@ -124,15 +124,15 @@ export default function LeadsPage() {
 
       <div className="flex gap-5">
         {/* Table */}
-        <div className="flex-1 bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
           {loading ? (
-            <div className="flex items-center justify-center h-48 text-slate-400 text-sm">
-              Loading leads…
+            <div className="p-4 space-y-2">
+              {Array.from({ length: 12 }).map((_, i) => <div key={i} className="h-10 skeleton" />)}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-100">
+                <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                   <tr className="text-left text-xs text-slate-500">
                     <th className="px-4 py-3 font-medium">Farm / Business</th>
                     <th className="px-4 py-3 font-medium">Location</th>
@@ -210,7 +210,7 @@ export default function LeadsPage() {
 
         {/* Detail panel */}
         {selected && (
-          <div className="w-72 shrink-0 bg-white rounded-xl border border-slate-200 p-5 space-y-4 self-start">
+          <div className="w-72 shrink-0 bg-white rounded-xl border border-slate-200 shadow-card p-5 space-y-4 self-start">
             <div className="flex items-start justify-between">
               <h3 className="font-semibold text-slate-900 text-sm leading-tight">
                 {selected.business_name ?? selected.owner_name ?? 'Lead Detail'}

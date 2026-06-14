@@ -57,9 +57,9 @@ export default function JobsPage() {
   const outstanding   = totalInvoiced - totalPaid
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 md:p-8 max-w-7xl mx-auto animate-fade">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-slate-900">Job Tracker</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Job Tracker</h1>
         <p className="text-slate-500 text-sm mt-0.5">All flights, quotes, and invoices</p>
       </div>
 
@@ -108,15 +108,15 @@ export default function JobsPage() {
       </div>
 
       {/* Jobs table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center h-48 text-slate-400 text-sm">
-            Loading jobs…
+          <div className="p-4 space-y-2">
+            {Array.from({ length: 10 }).map((_, i) => <div key={i} className="h-10 skeleton" />)}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-100">
+              <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                 <tr className="text-left text-xs text-slate-500">
                   <th className="px-4 py-3 font-medium">Job Title</th>
                   <th className="px-4 py-3 font-medium">Vertical</th>

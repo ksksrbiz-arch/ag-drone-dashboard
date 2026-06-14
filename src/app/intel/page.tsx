@@ -50,10 +50,10 @@ export default function IntelPage() {
   const withoutRec = filtered.filter(l => !l.action_recommendation)
 
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto">
+    <div className="p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">EFB Intelligence Hub</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">EFB Intelligence Hub</h1>
           <p className="text-slate-500 text-sm mt-0.5">
             Composite risk scores from 10m CDL · PRISM weather · ML model · NDRE trends
           </p>
@@ -85,8 +85,13 @@ export default function IntelPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-48 text-slate-400 text-sm">
-          Loading intelligence data…
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-9 skeleton" />
+              <div className="h-20 skeleton" /><div className="h-20 skeleton" />
+            </div>
+          ))}
         </div>
       ) : (
         <div className="flex gap-5">
@@ -122,7 +127,7 @@ export default function IntelPage() {
 
           {/* Detail panel */}
           {selected && (
-            <div className="w-72 shrink-0 bg-white rounded-xl border border-slate-200 p-5 space-y-4 self-start">
+            <div className="w-72 shrink-0 bg-white rounded-xl border border-slate-200 shadow-card p-5 space-y-4 self-start">
               <div className="flex items-start justify-between">
                 <h3 className="font-semibold text-slate-900 text-sm leading-tight">
                   {selected.business_name ?? selected.owner_name ?? 'Detail'}
@@ -193,7 +198,7 @@ export default function IntelPage() {
           <h2 className="text-sm font-semibold text-slate-500 mb-3">
             Ag Leads Without Action Classification ({withoutRec.length})
           </h2>
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4">
             <div className="flex flex-wrap gap-2">
               {withoutRec.map(lead => (
                 <div
