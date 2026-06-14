@@ -1,18 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabaseAdmin'
 import { categoryByKey } from '@/lib/discovery/categories'
-import { discoverLeads } from '@/lib/discovery/discover'
+import { discoverLeads, discoveryConfigured } from '@/lib/discovery/discover'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-// Discover prospect businesses for a category via AI web search.
+// Discover prospect businesses for a category: Brave + Tavily web search find
+// candidates, Groq extracts structured lead stubs, then the Claude enrichment
+// engine verifies them downstream.
 // dryRun (default true) → preview candidates; dryRun:false → insert the new ones.
 export async function POST(req: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!discoveryConfigured()) {
     return NextResponse.json(
-      { ok: false, error: 'Discovery runs on Claude web search — set ANTHROPIC_API_KEY.' },
+      {
+        ok: false,
+        error:
+          'Discovery needs a search provider (BRAVE_API_KEY or TAVILY_API_KEY) and GROQ_API_KEY for inference.',
+      },
       { status: 503 }
     )
   }
