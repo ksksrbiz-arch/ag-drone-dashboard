@@ -10,7 +10,9 @@ const navItems = [
   { href: '/pipeline',   label: 'Pipeline',   icon: '🔄' },
   { href: '/jobs',       label: 'Jobs',       icon: '✈️' },
   { href: '/field-ops',  label: 'Field Ops',  icon: '🌤️' },
+  { href: '/finance',    label: 'Finance',    icon: '💵' },
   { href: '/intel',      label: 'EFB Intel',  icon: '🧠' },
+  { href: '/alerts',     label: 'Alerts',     icon: '🔔' },
   { href: '/automation', label: 'Automation', icon: '🤖' },
 ]
 

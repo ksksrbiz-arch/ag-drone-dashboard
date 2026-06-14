@@ -20,6 +20,19 @@ async function handle(req: NextRequest) {
 
   try {
     const summary = await runEnrichment({ trigger, limit })
+
+    // On the daily cron, post the ops digest to Slack (best-effort). Folds the
+    // digest into the existing cron so we don't need a second schedule.
+    if (isCron) {
+      try {
+        const { buildDigest, postDigestToSlack } = await import('@/lib/digest')
+        const digest = await buildDigest()
+        await postDigestToSlack(digest.text)
+      } catch {
+        /* digest is best-effort */
+      }
+    }
+
     return NextResponse.json({ ok: true, ...summary })
   } catch (err: any) {
     return NextResponse.json(
