@@ -27,6 +27,21 @@ export type JobStatus =
   | 'paid'
   | 'cancelled'
 export type ActionRec = 'TREAT_NOW' | 'SCOUT_NOW' | 'CONTACT_NOW' | 'MONITOR'
+export type PriorityTier = 'P1' | 'P2' | 'P3' | 'P4'
+export type EnrichmentStatus =
+  | 'pending'
+  | 'researching'
+  | 'enriched'
+  | 'failed'
+  | 'stale'
+
+export interface PriorityFactor {
+  key: string
+  label: string
+  weight: number
+  value: number // 0..1 normalized
+  contribution: number // weight * value * 100
+}
 
 export interface Lead {
   id: string
@@ -71,6 +86,35 @@ export interface Lead {
   created_at: string
   updated_at: string
   context: Record<string, unknown> | null
+  // ─── Lead Intelligence Engine fields (from src/lib/enrichment pipeline) ──
+  priority_score?: number | null
+  priority_tier?: PriorityTier | null
+  priority_factors?: PriorityFactor[] | null
+  data_completeness?: number | null
+  enrichment_status?: EnrichmentStatus | null
+  enriched_at?: string | null
+  enrichment_confidence?: number | null
+  research_summary?: string | null
+  recommended_approach?: string | null
+  best_contact_method?: string | null
+  enrichment_sources?: Record<string, unknown> | null
+}
+
+export interface EnrichmentRun {
+  id: string
+  started_at: string
+  finished_at: string | null
+  status: 'running' | 'completed' | 'failed'
+  trigger: 'cron' | 'manual' | 'single' | null
+  leads_processed: number
+  leads_enriched: number
+  leads_failed: number
+  ai_calls: number
+  ai_enabled: boolean | null
+  model_version: string | null
+  duration_ms: number | null
+  error: string | null
+  summary: Record<string, unknown> | null
 }
 
 export interface Job {

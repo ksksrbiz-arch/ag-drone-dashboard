@@ -47,9 +47,14 @@ In the Vercel project settings → **Environment Variables**, add:
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase Dashboard → Project Settings → API → Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase Dashboard → Project Settings → API → `anon public` key |
+| `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys (enables AI lead research) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → `service_role` key (server-side writes) |
+| `CRON_SECRET` | Any random string — protects the automation endpoint |
+| `APOLLO_API_KEY` | Apollo.io → Settings → API (optional contact enrichment) |
 | `SLACK_WEBHOOK_URL` | Slack App → Incoming Webhooks (optional, for scraper alerts) |
 
 Both `NEXT_PUBLIC_*` vars are safe to expose — they use the row-level-security anon key.
+The rest are **server-side only** — set them in Vercel and never commit them.
 
 ---
 
@@ -101,6 +106,48 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
 | `/pipeline` | LOI Kanban — 6-stage pipeline with one-click stage advance |
 | `/jobs` | Job tracker — revenue summary, status filter, full job table |
 | `/intel` | EFB Intelligence Hub — action queue columns, composite risk cards, detail panel |
+| `/automation` | Lead Intelligence Automation — engine health, priority distribution, run history, manual trigger |
+
+---
+
+## Lead Intelligence Engine
+
+An automated pipeline that researches and prioritizes leads, keeping the
+dashboard current with no manual data entry.
+
+**What it does each run:**
+
+1. **Algorithmic prioritization** — a deterministic 0–100 score (P1–P4 tiers)
+   from proximity to Canby, treatable acreage, crop value, EFB urgency, revenue
+   potential, pipeline warmth, and contactability. Transparent factor breakdown
+   is stored per lead.
+2. **AI web research + reasoning** — Claude (`claude-opus-4-8`) with the
+   web-search tool confirms/fills business name, owner & contact, crop types,
+   phone/email/website, and writes a **"best approach for us specifically."**
+3. **Optional Apollo.io** contact booster fills remaining phone/email gaps.
+4. Writes everything back to Supabase → the dashboard updates automatically
+   (with live realtime on the Automation page).
+
+**How it runs:**
+
+- **Scheduled:** Vercel Cron hits `/api/enrich/run` every 6 hours (`vercel.json`).
+- **On demand:** the **Run automation now** button on `/automation`, or the
+  **Refresh intel** button on any lead in `/leads`.
+- **Endpoints:** `POST /api/enrich/run`, `POST /api/enrich/lead/[id]`,
+  `GET /api/enrich/status`.
+
+**Setup:**
+
+1. Apply the migration `supabase/migrations/20260614000000_lead_intelligence_engine.sql`
+   (Supabase Dashboard → SQL Editor). It's additive and safe to run on the
+   existing database.
+2. Set `ANTHROPIC_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in Vercel. (Without
+   `ANTHROPIC_API_KEY` the engine still runs the algorithmic prioritization.)
+3. Set `CRON_SECRET`; set `ENRICHMENT_REQUIRE_SECRET=true` to lock down manual
+   triggers.
+
+> The engine degrades gracefully: missing AI key → algorithmic scoring only;
+> migration not yet applied → it writes the columns it can and reports the rest.
 
 ---
 

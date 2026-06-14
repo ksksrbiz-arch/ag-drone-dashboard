@@ -5,11 +5,12 @@ import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 
 const navItems = [
-  { href: '/',         label: 'Overview',  icon: '📊' },
-  { href: '/leads',    label: 'Leads',     icon: '🌾' },
-  { href: '/pipeline', label: 'Pipeline',  icon: '🔄' },
-  { href: '/jobs',     label: 'Jobs',      icon: '✈️' },
-  { href: '/intel',    label: 'EFB Intel', icon: '🧠' },
+  { href: '/',           label: 'Overview',   icon: '📊' },
+  { href: '/leads',      label: 'Leads',      icon: '🌾' },
+  { href: '/pipeline',   label: 'Pipeline',   icon: '🔄' },
+  { href: '/jobs',       label: 'Jobs',       icon: '✈️' },
+  { href: '/intel',      label: 'EFB Intel',  icon: '🧠' },
+  { href: '/automation', label: 'Automation', icon: '🤖' },
 ]
 
 function Brand() {
