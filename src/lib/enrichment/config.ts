@@ -3,7 +3,10 @@ import type { EngineCapabilities } from './types'
 
 // Model + engine tuning, all overridable via environment variables so the
 // pipeline can be dialed in from Vercel without code changes.
-export const MODEL = process.env.ENRICHMENT_MODEL || 'claude-opus-4-8'
+// Default is Sonnet 4.6 — ~40% cheaper than Opus on the per-lead research that
+// dominates AI spend, and still strong with web search + adaptive thinking.
+// Set ENRICHMENT_MODEL=claude-opus-4-8 to trade cost for max research quality.
+export const MODEL = process.env.ENRICHMENT_MODEL || 'claude-sonnet-4-6'
 export const MODEL_VERSION = 'lead-intel-v1'
 
 export const EFFORT = (process.env.ENRICHMENT_EFFORT || 'medium') as

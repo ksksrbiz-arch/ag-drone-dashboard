@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { TOOLS, runTool } from '@/lib/assistant/tools'
+import { runGroqAssistant, groqConfigured } from '@/lib/assistant/groq'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-const MODEL = process.env.ASSISTANT_MODEL || process.env.ENRICHMENT_MODEL || 'claude-opus-4-8'
+// Provider: set ASSISTANT_PROVIDER=groq to run the assistant on Groq (fast +
+// cheap). Otherwise it runs on Claude — default Sonnet 4.6 (override with
+// ASSISTANT_MODEL / ENRICHMENT_MODEL).
+const USE_GROQ = process.env.ASSISTANT_PROVIDER === 'groq'
+const MODEL = process.env.ASSISTANT_MODEL || process.env.ENRICHMENT_MODEL || 'claude-sonnet-4-6'
 const MAX_TURNS = 6
 
 const SYSTEM = `You are the operations assistant for 1COMMERCE Drone Ops — a drone-spraying business based in Canby, Oregon, run by the owner and Bo (field ops). You help them run the business day to day.
@@ -20,13 +25,6 @@ Guidance:
 - Be concise and practical. Plain text only (no markdown tables). Money as $X,XXX.`
 
 export async function POST(req: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json(
-      { ok: false, error: 'The assistant isn’t configured — set ANTHROPIC_API_KEY.' },
-      { status: 503 }
-    )
-  }
-
   let body: any
   try {
     body = await req.json()
@@ -36,6 +34,30 @@ export async function POST(req: NextRequest) {
   const incoming = Array.isArray(body?.messages) ? body.messages : null
   if (!incoming) {
     return NextResponse.json({ ok: false, error: 'messages[] required' }, { status: 400 })
+  }
+
+  // ── Groq path (OpenAI-compatible) ──────────────────────────────────────
+  if (USE_GROQ) {
+    if (!groqConfigured()) {
+      return NextResponse.json(
+        { ok: false, error: 'ASSISTANT_PROVIDER=groq but GROQ_API_KEY is not set.' },
+        { status: 503 }
+      )
+    }
+    try {
+      const reply = await runGroqAssistant(incoming, SYSTEM)
+      return NextResponse.json({ ok: true, reply })
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 })
+    }
+  }
+
+  // ── Claude path ────────────────────────────────────────────────────────
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json(
+      { ok: false, error: 'The assistant isn’t configured — set ANTHROPIC_API_KEY (or ASSISTANT_PROVIDER=groq).' },
+      { status: 503 }
+    )
   }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
