@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { supabase, type Lead, type Job } from '@/lib/supabase'
 import { ActionIcon, RiskGaugeIcon } from '@/components/intel/icons'
+import { BRAND_NAME, BUSINESS } from '@/lib/business'
 
 interface KPIs {
   totalLeads: number
@@ -104,7 +105,7 @@ export default function OverviewPage() {
     <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-fade">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Operations Overview</h1>
-        <p className="text-slate-500 text-sm mt-0.5">1COMMERCE Precision Ag · Canby, OR</p>
+        <p className="text-slate-500 text-sm mt-0.5">{[BRAND_NAME, BUSINESS.city].filter(Boolean).join(' · ')}</p>
       </div>
 
       {/* Primary KPI row */}

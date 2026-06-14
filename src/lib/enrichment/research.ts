@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { Lead } from '@/lib/supabase'
 import type { ResearchResult } from './types'
 import { COMPANY_CONTEXT, EFFORT, MODEL } from './config'
+import { BUSINESS } from '@/lib/business'
 import { missingFields } from './completeness'
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -34,7 +35,7 @@ recommendation tailored to this company. Rules:
 - Prefer recent, authoritative sources (the business's own site, Google Business,
   county/USDA/extension records, ag directories, LinkedIn).
 - "recommended_approach" must be specific to THIS lead and to a drone spray /
-  scouting operator in the Willamette Valley — what to lead with, which service
+  scouting operator in ${BUSINESS.region} — what to lead with, which service
   fits, timing, and the single best way to make contact.
 - Report a calibrated overall confidence in [0,1].
 

@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, Polygon, Tooltip, useMap } from 'react-leaflet
 import 'leaflet/dist/leaflet.css'
 import type { Field } from '@/lib/supabase'
 import { toLeafletPositions } from '@/lib/geo'
+import { BUSINESS } from '@/lib/business'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Field boundary map — Leaflet + Esri satellite imagery. Renders each field's
@@ -12,7 +13,7 @@ import { toLeafletPositions } from '@/lib/geo'
 // (next/dynamic ssr:false from the parent).
 // ─────────────────────────────────────────────────────────────────────────
 
-const CANBY: [number, number] = [45.2662, -122.6926]
+const CANBY: [number, number] = [BUSINESS.hqLat, BUSINESS.hqLon]
 
 interface FieldMapProps {
   fields: Field[]

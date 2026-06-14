@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabaseAdmin'
 import { cheapComplete, aiConfigured } from '@/lib/ai/llm'
 import { COMPANY_CONTEXT } from '@/lib/enrichment/config'
+import { OUTREACH_SIGNOFF } from '@/lib/business'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
   const channelRule =
     channel === 'sms'
       ? 'Write a concise SMS under ~320 characters — friendly, direct, with a clear ask to reply or schedule a quick look.'
-      : 'Write a short outreach email. First line is the subject, prefixed exactly "Subject:". Then 3-5 short sentences, warm and professional, with one clear call to action. Sign off as "Bo — 1COMMERCE Drone Ops".'
+      : `Write a short outreach email. First line is the subject, prefixed exactly "Subject:". Then 3-5 short sentences, warm and professional, with one clear call to action. Sign off as "${OUTREACH_SIGNOFF}" — keep any bracketed placeholder (e.g. [Your name]) verbatim for the sender to fill in.`
 
   try {
     const draft = await cheapComplete({

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { TOOLS, runTool } from '@/lib/assistant/tools'
 import { runGroqAssistant, groqConfigured } from '@/lib/assistant/groq'
+import { BUSINESS, CITY_SHORT } from '@/lib/business'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,7 +15,7 @@ const USE_GROQ = process.env.ASSISTANT_PROVIDER === 'groq'
 const MODEL = process.env.ASSISTANT_MODEL || process.env.ENRICHMENT_MODEL || 'claude-sonnet-4-6'
 const MAX_TURNS = 6
 
-const SYSTEM = `You are the operations assistant for 1COMMERCE Drone Ops — a drone-spraying business based in Canby, Oregon, run by the owner and Bo (field ops). You help them run the business day to day.
+const SYSTEM = `You are the operations assistant for ${BUSINESS.name || 'a drone-spraying ag-services business'}${CITY_SHORT ? ` (based in ${BUSINESS.city})` : ''}. You help the team run the business day to day.
 
 Answer questions about their leads, customers, jobs, mapped fields, and finances by calling the provided read-only tools. NEVER invent numbers — if you don't have data, call a tool; if a tool returns nothing, say so plainly.
 

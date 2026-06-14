@@ -11,7 +11,7 @@ export interface ResearchResult {
   email: string | null
   website: string | null
   est_acreage: number | null
-  /** "best options for us specifically" — how 1COMMERCE should approach this lead. */
+  /** "best options for us specifically" — how we should approach this lead. */
   recommended_approach: string | null
   best_contact_method: string | null
   research_summary: string | null
