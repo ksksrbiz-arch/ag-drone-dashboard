@@ -134,6 +134,51 @@ export interface Job {
   invoice_amount: number | null
   paid_amount: number | null
   deliverables: string[] | null
+  customer_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CustomerStatus = 'prospect' | 'active' | 'inactive'
+export type ContractType = 'loi' | 'service_agreement' | 'quote'
+export type ContractStatus =
+  | 'draft'
+  | 'sent'
+  | 'signed'
+  | 'active'
+  | 'expired'
+  | 'declined'
+
+export interface Customer {
+  id: string
+  business_name: string | null
+  contact_name: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  city: string | null
+  county: string | null
+  state: string | null
+  primary_crop: string | null
+  est_acreage: number | null
+  status: CustomerStatus
+  lead_id: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Contract {
+  id: string
+  customer_id: string
+  title: string
+  type: ContractType
+  status: ContractStatus
+  annual_value: number | null
+  start_date: string | null
+  end_date: string | null
+  signed_date: string | null
+  terms: string | null
   created_at: string
   updated_at: string
 }
