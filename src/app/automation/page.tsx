@@ -7,6 +7,7 @@ import {
   type EnrichmentRun,
   type PriorityTier,
 } from '@/lib/supabase'
+import EfbAutomationPanel from '@/components/intel/EfbAutomationPanel'
 
 interface Capabilities {
   aiEnabled: boolean
@@ -187,6 +188,9 @@ export default function AutomationPage() {
 
       {/* Engine health */}
       <EngineHealth caps={caps} />
+
+      {/* EFB satellite risk engine */}
+      <EfbAutomationPanel />
 
       {/* Coverage KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
