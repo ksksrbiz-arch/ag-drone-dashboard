@@ -10,7 +10,8 @@
 
 -- ── 1. Keep leads.updated_at fresh on every change ───────────────────────
 create or replace function public.set_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path = '' as $$
 begin
   new.updated_at = now();
   return new;
@@ -25,7 +26,8 @@ create trigger trg_leads_updated_at
 -- Any lead inserted without an enrichment_status is marked 'pending', so the
 -- engine picks it up on the next run with zero manual steps.
 create or replace function public.enqueue_new_lead()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path = '' as $$
 begin
   if new.enrichment_status is null then
     new.enrichment_status = 'pending';
@@ -40,7 +42,8 @@ create trigger trg_leads_enqueue
 
 -- ── 3. Mark enriched leads stale after N days (engine / pg_cron callable) ──
 create or replace function public.mark_stale_leads(p_days int default 7)
-returns int language plpgsql as $$
+returns int language plpgsql
+set search_path = '' as $$
 declare n int;
 begin
   update public.leads
@@ -54,7 +57,8 @@ end $$;
 
 -- ── 4. One-call ops KPI payload for the dashboards ───────────────────────
 create or replace function public.get_ops_kpis()
-returns jsonb language sql stable as $$
+returns jsonb language sql stable
+set search_path = '' as $$
   select jsonb_build_object(
     'total_leads',      (select count(*) from public.leads),
     'loi_signed',       (select count(*) from public.leads where loi_status = 'loi_signed'),
