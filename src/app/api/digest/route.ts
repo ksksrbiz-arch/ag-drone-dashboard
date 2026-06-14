@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { buildDigest, postDigestToSlack } from '@/lib/digest'
+import { buildDigest, narrateDigest, postDigestToSlack } from '@/lib/digest'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,8 +18,9 @@ export async function GET() {
 export async function POST(_req: NextRequest) {
   try {
     const digest = await buildDigest()
-    const sent = await postDigestToSlack(digest.text)
-    return NextResponse.json({ ok: true, sent, ...digest })
+    const text = await narrateDigest(digest)
+    const sent = await postDigestToSlack(text)
+    return NextResponse.json({ ok: true, sent, text, counts: digest.counts })
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 })
   }

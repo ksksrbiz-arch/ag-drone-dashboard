@@ -1,5 +1,6 @@
 import { getAdminClient } from '@/lib/supabaseAdmin'
 import { fetchSprayWindows } from '@/lib/weather'
+import { cheapComplete, aiConfigured } from '@/lib/ai/llm'
 import type { Lead, Job } from '@/lib/supabase'
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -78,6 +79,27 @@ export async function buildDigest(): Promise<Digest> {
   }
 
   return { text: lines.join('\n'), counts }
+}
+
+/**
+ * Rewrite the structured digest into a short, friendly morning briefing using
+ * the configured cheap LLM (Groq / OpenRouter / Claude). Falls back to the
+ * template text if no provider is set or the call fails.
+ */
+export async function narrateDigest(d: Digest): Promise<string> {
+  if (!aiConfigured()) return d.text
+  try {
+    const narrative = await cheapComplete({
+      system:
+        'You are the operations chief of staff for a drone-spraying business in Canby, Oregon (owner + Bo on field ops). Write a brief, friendly morning ops briefing from the data. 4-7 short lines, plain text, concrete and action-oriented. Keep emoji light. Do not invent numbers — only use what is given.',
+      user: `Here is today's data:\n${d.text}\n\nWrite the briefing.`,
+      maxTokens: 400,
+      temperature: 0.5,
+    })
+    return narrative || d.text
+  } catch {
+    return d.text
+  }
 }
 
 export async function postDigestToSlack(text: string): Promise<boolean> {
