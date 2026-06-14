@@ -106,6 +106,9 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
 | `/pipeline` | LOI Kanban — 6-stage pipeline with one-click stage advance |
 | `/jobs` | Job tracker — revenue summary, status filter, full job table |
 | `/intel` | EFB Intelligence Hub — action queue columns, composite risk cards, detail panel |
+| `/field-ops` | Field Ops — 7-day spray-window forecast (Open-Meteo) + job scheduling |
+| `/finance` | Financial Intelligence — revenue, A/R aging, weighted pipeline forecast |
+| `/alerts` | Alerts — urgent lead transitions + daily ops digest (set `SLACK_WEBHOOK_URL` to auto-post the digest on the daily cron) |
 | `/automation` | Lead Intelligence Automation — engine health, priority distribution, run history, manual trigger |
 
 ---
@@ -155,9 +158,10 @@ Apply it the same way (Supabase → SQL Editor). Additive and idempotent.
 
 **Setup:**
 
-1. Apply the migrations `supabase/migrations/20260614000000_lead_intelligence_engine.sql`
-   then `…010000_intelligence_backend.sql` (Supabase Dashboard → SQL Editor).
-   Both are additive and safe to run on the existing database.
+1. Apply the migrations in `supabase/migrations/` in order
+   (`…000000_lead_intelligence_engine.sql`, `…010000_intelligence_backend.sql`,
+   `…020000_alerts.sql`) via Supabase Dashboard → SQL Editor. All are additive
+   and safe to run on the existing database.
 2. Set `ANTHROPIC_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in Vercel. (Without
    `ANTHROPIC_API_KEY` the engine still runs the algorithmic prioritization.)
 3. Set `CRON_SECRET`; set `ENRICHMENT_REQUIRE_SECRET=true` to lock down manual

@@ -138,6 +138,17 @@ export interface Job {
   updated_at: string
 }
 
+export interface Alert {
+  id: string
+  created_at: string
+  type: 'treat_now' | 'new_p1' | 'system'
+  severity: 'info' | 'warning' | 'critical'
+  lead_id: string | null
+  title: string
+  body: string | null
+  read: boolean
+}
+
 export interface PipelineSummary {
   vertical: Vertical
   loi_status: LOIStatus
