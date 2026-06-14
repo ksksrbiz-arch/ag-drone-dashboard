@@ -9,6 +9,7 @@ const VERTICALS: { value: Vertical | 'all'; label: string }[] = [
   { value: 'insurance',   label: '🏠 Insurance' },
   { value: 'real_estate', label: '🏡 Real Estate' },
   { value: 'construction',label: '🏗️ Construction' },
+  { value: 'energy',      label: '☀️ Solar & Infra' },
 ]
 
 const LOI_STATUSES: { value: LOIStatus | 'all'; label: string }[] = [
