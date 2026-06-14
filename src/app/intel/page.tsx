@@ -1,11 +1,20 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import { supabase, type Lead, type ActionRec } from '@/lib/supabase'
 import {
   ModelStatusBarSkeleton,
   IntelBoardSkeleton,
+  MapSkeleton,
 } from '@/components/intel/Skeletons'
+
+// Leaflet touches `window`, so load the map client-side only with a skeleton
+// fallback while its chunk hydrates.
+const RiskMap = dynamic(() => import('@/components/intel/RiskMap'), {
+  ssr: false,
+  loading: () => <MapSkeleton />,
+})
 
 const ACTION_CONFIG: Record<ActionRec, { label: string; bg: string; border: string; text: string; dot: string }> = {
   TREAT_NOW:   { label: '🔴 Treat Now',   bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-700',    dot: 'bg-red-500'    },
@@ -19,6 +28,8 @@ export default function IntelPage() {
   const [loading, setLoading] = useState(true)
   const [crop, setCrop] = useState<string>('all')
   const [selected, setSelected] = useState<Lead | null>(null)
+  const [showMap, setShowMap] = useState(true)
+  const [showRiskOverlay, setShowRiskOverlay] = useState(true)
 
   useEffect(() => {
     supabase
@@ -41,6 +52,11 @@ export default function IntelPage() {
   const filtered = useMemo(() =>
     crop === 'all' ? leads : leads.filter(l => l.primary_crop === crop),
     [leads, crop]
+  )
+
+  const mappedCount = useMemo(
+    () => filtered.filter(l => l.lat != null && l.lon != null).length,
+    [filtered]
   )
 
   const grouped = (['TREAT_NOW', 'SCOUT_NOW', 'CONTACT_NOW', 'MONITOR'] as ActionRec[]).reduce(
@@ -91,6 +107,56 @@ export default function IntelPage() {
           } />
         </div>
       )}
+
+      {/* Satellite risk map */}
+      <div className="mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-700">Satellite Risk Map</h2>
+            {!loading && (
+              <span className="text-xs text-slate-400">
+                {mappedCount} of {filtered.length} parcels mapped
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {showMap && (
+              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+                {([['Risk heatmap', true], ['Satellite', false]] as const).map(([label, on]) => (
+                  <button
+                    key={label}
+                    onClick={() => setShowRiskOverlay(on)}
+                    className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
+                      showRiskOverlay === on
+                        ? 'bg-slate-800 text-white'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => setShowMap(v => !v)}
+              className="text-xs px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-400 transition-colors"
+            >
+              {showMap ? 'Hide map' : 'Show map'}
+            </button>
+          </div>
+        </div>
+        {showMap &&
+          (loading ? (
+            <MapSkeleton />
+          ) : (
+            <RiskMap
+              leads={filtered}
+              selected={selected}
+              onSelect={lead => setSelected(selected?.id === lead.id ? null : lead)}
+              showRiskOverlay={showRiskOverlay}
+            />
+          ))}
+      </div>
 
       {loading ? (
         <div className="flex gap-5">
