@@ -48,10 +48,17 @@ const ACTION_URGENCY: Record<string, number> = {
   MONITOR: 0.3,
 }
 
+// Each factor carries an ag-spray weight and a non-ag weight. Ag-specific
+// factors (acreage, crop value, EFB urgency) weigh 0 for non-ag verticals; that
+// weight shifts to scale/value, reachability, and base-score signals so
+// roof/real-estate/construction/solar leads rank on what matters for them.
+// Within each vertical group the weights sum to 1.0 (no renormalization needed),
+// but computePriority normalizes defensively in case they ever drift.
 interface FactorSpec {
   key: string
   label: string
-  weight: number
+  agWeight: number
+  nonAgWeight: number
   value: (l: Lead) => number
 }
 
@@ -59,7 +66,8 @@ const FACTORS: FactorSpec[] = [
   {
     key: 'proximity',
     label: CITY_SHORT ? `Proximity to ${CITY_SHORT}` : 'Proximity to HQ',
-    weight: 0.16,
+    agWeight: 0.16,
+    nonAgWeight: 0.18,
     value: l =>
       l.distance_to_canby_mi == null
         ? 0.5
@@ -68,19 +76,22 @@ const FACTORS: FactorSpec[] = [
   {
     key: 'acreage',
     label: 'Treatable acreage',
-    weight: 0.15,
+    agWeight: 0.15,
+    nonAgWeight: 0, // ag-only
     value: l => (l.est_acreage == null ? 0.4 : clamp01(l.est_acreage / 400)),
   },
   {
     key: 'crop_value',
     label: 'Crop value fit',
-    weight: 0.13,
+    agWeight: 0.13,
+    nonAgWeight: 0, // ag-only
     value: l => cropValue(l.primary_crop),
   },
   {
     key: 'efb_urgency',
     label: 'EFB / action urgency',
-    weight: 0.15,
+    agWeight: 0.15,
+    nonAgWeight: 0, // ag-only
     value: l => {
       const risk = l.composite_efb_risk != null ? l.composite_efb_risk / 100 : 0
       const action = l.action_recommendation
@@ -91,8 +102,9 @@ const FACTORS: FactorSpec[] = [
   },
   {
     key: 'revenue',
-    label: 'Revenue potential',
-    weight: 0.12,
+    label: 'Revenue / job-value potential',
+    agWeight: 0.12,
+    nonAgWeight: 0.28, // primary scale signal for non-ag
     value: l =>
       l.est_annual_revenue == null
         ? 0.35
@@ -101,13 +113,15 @@ const FACTORS: FactorSpec[] = [
   {
     key: 'pipeline',
     label: 'Pipeline warmth',
-    weight: 0.1,
+    agWeight: 0.1,
+    nonAgWeight: 0.16,
     value: l => STAGE_WARMTH[l.loi_status] ?? 0.15,
   },
   {
     key: 'contactability',
     label: 'Reachable now',
-    weight: 0.09,
+    agWeight: 0.09,
+    nonAgWeight: 0.18,
     value: l => {
       const phone = l.phone ? 0.6 : 0
       const email = l.email ? 0.4 : 0
@@ -117,7 +131,8 @@ const FACTORS: FactorSpec[] = [
   {
     key: 'lead_score',
     label: 'Base lead score',
-    weight: 0.1,
+    agWeight: 0.1,
+    nonAgWeight: 0.2,
     value: l => (l.lead_score == null ? 0.4 : clamp01(l.lead_score / 100)),
   },
 ]
@@ -129,14 +144,20 @@ export interface PriorityResult {
 }
 
 export function computePriority(lead: Lead): PriorityResult {
-  const factors: PriorityFactor[] = FACTORS.map(f => {
+  const isAg = (lead.vertical ?? 'ag_spray') === 'ag_spray'
+  const active = FACTORS.map(f => ({ f, weight: isAg ? f.agWeight : f.nonAgWeight }))
+    .filter(x => x.weight > 0)
+  const totalWeight = active.reduce((s, x) => s + x.weight, 0) || 1
+
+  const factors: PriorityFactor[] = active.map(({ f, weight }) => {
+    const w = weight / totalWeight // normalize defensively
     const value = clamp01(f.value(lead))
     return {
       key: f.key,
       label: f.label,
-      weight: f.weight,
+      weight: Math.round(w * 1000) / 1000,
       value,
-      contribution: Math.round(f.weight * value * 100 * 10) / 10,
+      contribution: Math.round(w * value * 100 * 10) / 10,
     }
   })
 
