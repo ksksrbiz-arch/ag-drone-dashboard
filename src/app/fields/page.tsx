@@ -18,6 +18,8 @@ export default function FieldsPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Field | null>(null)
+  const [backfilling, setBackfilling] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const [{ data: f }, { data: c }] = await Promise.all([
@@ -50,6 +52,27 @@ export default function FieldsPage() {
     if (newFields[0]) setSelected(newFields[0])
   }
 
+  async function backfillBoundaries() {
+    setBackfilling(true)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/fields/backfill?limit=1000', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok || json.ok === false) {
+        setMsg(`Backfill failed: ${json.error ?? res.statusText}`)
+      } else {
+        setMsg(
+          `Mapped ${json.inserted} parcel boundaries (${json.matched} matched of ${json.candidates}) · ${(json.durationMs / 1000).toFixed(1)}s`
+        )
+        await load()
+      }
+    } catch (err: any) {
+      setMsg(`Backfill failed: ${String(err?.message ?? err)}`)
+    } finally {
+      setBackfilling(false)
+    }
+  }
+
   async function deleteField(id: string) {
     await supabase.from('fields').delete().eq('id', id)
     setFields(prev => prev.filter(f => f.id !== id))
@@ -58,12 +81,28 @@ export default function FieldsPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto animate-fade">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Fields</h1>
-        <p className="text-slate-500 text-sm mt-0.5">
-          {fields.length} fields · {Math.round(totalAcres).toLocaleString()} acres mapped
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Fields</h1>
+          <p className="text-slate-500 text-sm mt-0.5">
+            {fields.length} fields · {Math.round(totalAcres).toLocaleString()} acres mapped
+          </p>
+        </div>
+        <button
+          onClick={backfillBoundaries}
+          disabled={backfilling}
+          className="tap inline-flex items-center gap-1.5 text-sm bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg px-4 py-2 transition-colors disabled:opacity-60 shadow-card"
+          title="Pull true parcel boundaries from county GIS for geocoded leads"
+        >
+          {backfilling ? 'Mapping boundaries…' : 'Map parcel boundaries'}
+        </button>
       </div>
+
+      {msg && (
+        <div className="text-sm rounded-lg border border-brand-200 bg-brand-50 text-brand-800 px-4 py-2.5 mb-4">
+          {msg}
+        </div>
+      )}
 
       <div className="mb-6">
         {loading ? <MapSkeleton /> : <FieldMap fields={fields} selected={selected} onSelect={setSelected} />}

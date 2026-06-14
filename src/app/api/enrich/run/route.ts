@@ -37,6 +37,13 @@ async function handle(req: NextRequest) {
       } catch {
         /* EFB recompute is best-effort on the shared cron */
       }
+      try {
+        // Pull true parcel boundaries for newly-geocoded leads (free county GIS).
+        const { runBoundaryBackfill } = await import('@/lib/fields/parcel-boundaries')
+        await runBoundaryBackfill({ trigger: 'cron', limit: 500 })
+      } catch {
+        /* boundary backfill is best-effort on the shared cron */
+      }
     }
 
     // On the daily cron, post the ops digest to Slack (best-effort). Folds the

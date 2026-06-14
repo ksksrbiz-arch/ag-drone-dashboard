@@ -1,0 +1,37 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { runBoundaryBackfill } from '@/lib/fields/parcel-boundaries'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300
+
+// Backfills true parcel boundaries (from free county GIS) into the fields table
+// for geocoded ag-spray leads that don't have one yet. Triggered by the Fields
+// page button and (best-effort) the daily cron.
+async function handle(req: NextRequest) {
+  if (!authorized(req)) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+  const isCron = req.headers.get('x-vercel-cron') != null
+  const limit = Number(new URL(req.url).searchParams.get('limit')) || undefined
+  try {
+    const summary = await runBoundaryBackfill({ trigger: isCron ? 'cron' : 'manual', limit })
+    return NextResponse.json({ ok: true, ...summary })
+  } catch (err: any) {
+    return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 })
+  }
+}
+
+export const POST = handle
+export const GET = handle
+
+function authorized(req: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET
+  if (req.headers.get('x-vercel-cron') != null) return true
+  if (!secret) return true
+  if (process.env.ENRICHMENT_REQUIRE_SECRET !== 'true') return true
+  const auth = req.headers.get('authorization')
+  if (auth === `Bearer ${secret}`) return true
+  if (new URL(req.url).searchParams.get('secret') === secret) return true
+  return false
+}
