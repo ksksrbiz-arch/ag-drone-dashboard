@@ -7,7 +7,10 @@
 // (wash-off / can't fly), and temperature extremes.
 // ─────────────────────────────────────────────────────────────────────────
 
-export const CANBY_COORDS = { lat: 45.2662, lon: -122.6926 } // HQ
+import { BUSINESS } from '@/lib/business'
+
+// HQ center for the forecast — from the configurable business profile.
+export const CANBY_COORDS = { lat: BUSINESS.hqLat, lon: BUSINESS.hqLon }
 
 export type SprayRating = 'GO' | 'CAUTION' | 'NO_GO'
 

@@ -2,11 +2,12 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import Sidebar from '@/components/Sidebar'
+import { BRAND_NAME } from '@/lib/business'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: '1COMMERCE Drone Ops',
+  title: BRAND_NAME,
   description: 'Ag drone operations & precision intelligence dashboard',
 }
 

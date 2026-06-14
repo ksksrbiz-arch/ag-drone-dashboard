@@ -10,6 +10,8 @@
 // for fast, cheap text generation that doesn't need tools or search.
 // ─────────────────────────────────────────────────────────────────────────
 
+import { BRAND_NAME } from '@/lib/business'
+
 export interface ChatOpts {
   system: string
   user: string
@@ -85,7 +87,7 @@ async function openaiComplete(p: Resolved, opts: ChatOpts): Promise<string> {
       Authorization: `Bearer ${p.key}`,
       'Content-Type': 'application/json',
       // OpenRouter likes these; harmless for Groq.
-      'X-Title': '1COMMERCE Drone Ops',
+      'X-Title': BRAND_NAME,
     },
     body: JSON.stringify({
       model: p.model,

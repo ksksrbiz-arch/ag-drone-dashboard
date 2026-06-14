@@ -1,4 +1,5 @@
 import { cheapComplete, aiConfigured } from './llm'
+import { BUSINESS } from '@/lib/business'
 
 // Shared controlled vocabulary for lead tags — used by the bulk tagging route
 // and by the enrichment engine (auto-tag on enrich). Additive only.
@@ -38,7 +39,7 @@ export async function suggestLeadTags(lead: LeadLike): Promise<string[]> {
   const desc = `${lead.business_name ?? lead.owner_name ?? 'Unknown'} | crop:${lead.primary_crop ?? '?'} | vertical:${lead.vertical ?? '?'} | county:${lead.county ?? '?'} | acres:${lead.est_acreage ?? '?'} | notes:${String(lead.research_summary ?? '').slice(0, 200)}`
   try {
     const raw = await cheapComplete({
-      system: `You tag an agricultural sales lead for a drone-spraying business (EFB treatment + crop scouting/spraying in Oregon's Willamette Valley). Choose 1-4 tags ONLY from this list: ${LEAD_TAG_VOCAB.join(', ')}. Use "efb-target" only for hazelnut/filbert. Return ONLY a JSON array of strings, e.g. ["hazelnut","efb-target"]. No prose.`,
+      system: `You tag an agricultural sales lead for a drone-spraying business (EFB treatment + crop scouting/spraying in ${BUSINESS.region}). Choose 1-4 tags ONLY from this list: ${LEAD_TAG_VOCAB.join(', ')}. Use "efb-target" only for hazelnut/filbert. Return ONLY a JSON array of strings, e.g. ["hazelnut","efb-target"]. No prose.`,
       user: desc,
       maxTokens: 80,
       temperature: 0,

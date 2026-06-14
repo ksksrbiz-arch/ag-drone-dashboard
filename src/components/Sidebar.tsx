@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
+import { BUSINESS, BRAND_NAME } from '@/lib/business'
 
 const navItems = [
   { href: '/',           label: 'Overview',   icon: '📊' },
@@ -24,8 +25,8 @@ function Brand() {
     <div className="flex items-center gap-2.5">
       <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white text-base shadow-sm">🚁</div>
       <div className="leading-tight">
-        <div className="text-white font-bold text-sm tracking-tight">1COMMERCE</div>
-        <div className="text-slate-400 text-[11px]">Drone Ops</div>
+        <div className="text-white font-bold text-sm tracking-tight">{BRAND_NAME}</div>
+        {BUSINESS.tagline && <div className="text-slate-400 text-[11px]">{BUSINESS.tagline}</div>}
       </div>
     </div>
   )
@@ -61,8 +62,8 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 function Footer() {
   return (
     <div className="px-5 py-4 border-t border-white/10">
-      <div className="text-slate-400 text-xs">Canby, OR · DJI Agras T50</div>
-      <div className="text-slate-500 text-xs mt-0.5">Bo Seiders — Field Ops</div>
+      <div className="text-slate-400 text-xs">{[BUSINESS.city, BUSINESS.equipment].filter(Boolean).join(' · ')}</div>
+      {BUSINESS.signer && <div className="text-slate-500 text-xs mt-0.5">{BUSINESS.signer} — Field Ops</div>}
     </div>
   )
 }

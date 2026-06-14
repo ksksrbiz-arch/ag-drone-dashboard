@@ -1,4 +1,5 @@
 import type { Lead, PriorityFactor, PriorityTier } from '@/lib/supabase'
+import { CITY_SHORT } from '@/lib/business'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Algorithmic prioritization.
@@ -57,7 +58,7 @@ interface FactorSpec {
 const FACTORS: FactorSpec[] = [
   {
     key: 'proximity',
-    label: 'Proximity to Canby',
+    label: CITY_SHORT ? `Proximity to ${CITY_SHORT}` : 'Proximity to HQ',
     weight: 0.16,
     value: l =>
       l.distance_to_canby_mi == null

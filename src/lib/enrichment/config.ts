@@ -25,15 +25,9 @@ export const APOLLO_ENABLED = Boolean(process.env.APOLLO_API_KEY)
 export const REQUIRE_SECRET_FOR_MANUAL =
   process.env.ENRICHMENT_REQUIRE_SECRET === 'true'
 
-// Business context the AI researcher reasons about when ranking "best options".
-export const COMPANY_CONTEXT = `1COMMERCE Precision Ag is a drone-services company based in Canby, Oregon
-(Willamette Valley). Core service: agricultural spraying and crop scouting with
-DJI Agras T50 spray drones — especially Eastern Filbert Blight (EFB) treatment
-and scouting for hazelnut orchards, plus fungicide/pesticide application for
-orchards, vineyards, berries, nurseries and row crops. Secondary verticals:
-aerial imaging for insurance, real estate, and construction. Ideal customers are
-growers and operations within roughly 60 miles of Canby with treatable acreage
-and a recurring spray or scouting need.`
+// Business context the AI researcher reasons about — sourced from the central,
+// env-configurable business profile (src/lib/business.ts). Nothing is hard-coded.
+export { BUSINESS_CONTEXT as COMPANY_CONTEXT } from '@/lib/business'
 
 export function capabilities(): EngineCapabilities {
   return {

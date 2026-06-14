@@ -19,7 +19,9 @@ import { effectiveRisk } from '@/lib/efb/scoring'
 // Rendered client-only via next/dynamic (ssr:false) by the parent.
 // ─────────────────────────────────────────────────────────────────────────
 
-const CANBY: [number, number] = [45.2662, -122.6926] // HQ — default center
+import { BUSINESS } from '@/lib/business'
+
+const CANBY: [number, number] = [BUSINESS.hqLat, BUSINESS.hqLon] // HQ — default center
 
 export type RiskMetric = 'composite' | 'weather' | 'wetness' | 'health' | 'ml'
 export type Basemap = 'satellite' | 'streets' | 'terrain'

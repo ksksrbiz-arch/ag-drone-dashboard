@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, type Job } from '@/lib/supabase'
 import { fetchSprayWindows, type SprayDay, type SprayRating } from '@/lib/weather'
+import { BUSINESS } from '@/lib/business'
 
 const RATING_META: Record<
   SprayRating,
@@ -28,7 +29,7 @@ const RATING_META: Record<
   },
 }
 
-const DEFAULT_EQUIPMENT = 'DJI Agras T50'
+const DEFAULT_EQUIPMENT = BUSINESS.equipment
 
 export default function FieldOpsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
@@ -111,7 +112,7 @@ export default function FieldOpsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Field Ops</h1>
         <p className="text-slate-500 text-sm mt-0.5">
-          Spray-window forecast · Canby, OR · schedule jobs onto the best days
+          Spray-window forecast{BUSINESS.city ? ` · ${BUSINESS.city}` : ''} · schedule jobs onto the best days
         </p>
       </div>
 

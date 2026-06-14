@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabaseAdmin'
 import { cheapComplete, aiConfigured, extractJson } from '@/lib/ai/llm'
 import { LEAD_TAG_VOCAB as VOCAB } from '@/lib/ai/tagging'
+import { BUSINESS } from '@/lib/business'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
     )
     .join('\n')
 
-  const system = `You tag agricultural sales leads for a drone-spraying business (EFB treatment + crop scouting/spraying in Oregon's Willamette Valley). For each lead choose 1-4 tags ONLY from this exact list: ${VOCAB.join(', ')}. Pick the single best crop/operation category plus any clearly-supported fit signals. Use "efb-target" only for hazelnut/filbert. Return ONLY JSON mapping each id to an array of tags, e.g. {"<uuid>":["hazelnut","efb-target"]}. No prose, no code fences.`
+  const system = `You tag agricultural sales leads for a drone-spraying business (EFB treatment + crop scouting/spraying in ${BUSINESS.region}). For each lead choose 1-4 tags ONLY from this exact list: ${VOCAB.join(', ')}. Pick the single best crop/operation category plus any clearly-supported fit signals. Use "efb-target" only for hazelnut/filbert. Return ONLY JSON mapping each id to an array of tags, e.g. {"<uuid>":["hazelnut","efb-target"]}. No prose, no code fences.`
 
   let map: Record<string, string[]> = {}
   try {
