@@ -1,6 +1,6 @@
 import { BUSINESS, CITY_SHORT } from '@/lib/business'
 import type { DiscoveryCategory } from './categories'
-import { searchConfigured, searchProspects, type SearchHit } from './search'
+import { searchConfigured, searchProspectsDetailed, type SearchHit, type SearchDiag } from './search'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Prospect discovery, three stages:
@@ -38,12 +38,13 @@ export function discoveryConfigured(): boolean {
 export async function discoverLeads(
   cat: DiscoveryCategory,
   limit = 10
-): Promise<{ leads: DiscoveredLead[]; aiCalls: number }> {
-  const hits = await searchProspects(cat, limit)
-  if (!hits.length) return { leads: [], aiCalls: 0 }
+): Promise<{ leads: DiscoveredLead[]; aiCalls: number; diag: SearchDiag & { groqKey: boolean; inferred: number } }> {
+  const { hits, diag } = await searchProspectsDetailed(cat, limit)
+  const groqKey = Boolean(process.env.GROQ_API_KEY)
+  if (!hits.length) return { leads: [], aiCalls: 0, diag: { ...diag, groqKey, inferred: 0 } }
 
   const leads = await inferLeads(cat, hits, limit)
-  return { leads, aiCalls: 1 }
+  return { leads, aiCalls: 1, diag: { ...diag, groqKey, inferred: leads.length } }
 }
 
 // ── Stage 2: Groq turns raw search hits into structured lead stubs ──────────
