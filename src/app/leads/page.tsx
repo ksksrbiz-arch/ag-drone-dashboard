@@ -55,6 +55,12 @@ export default function LeadsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [converting, setConverting] = useState(false)
   const [convertMsg, setConvertMsg] = useState<string | null>(null)
+  // Smart search (AI) + outreach drafting
+  const [aiFilter, setAiFilter] = useState<Record<string, any> | null>(null)
+  const [smartQuery, setSmartQuery] = useState('')
+  const [smartBusy, setSmartBusy] = useState(false)
+  const [draft, setDraft] = useState<string | null>(null)
+  const [draftBusy, setDraftBusy] = useState<'email' | 'sms' | null>(null)
 
   useEffect(() => {
     supabase
@@ -69,7 +75,44 @@ export default function LeadsPage() {
 
   useEffect(() => {
     setConvertMsg(null)
+    setDraft(null)
   }, [selected?.id])
+
+  async function runSmartSearch() {
+    const q = smartQuery.trim()
+    if (!q || smartBusy) return
+    setSmartBusy(true)
+    try {
+      const res = await fetch('/api/leads/smart-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q }),
+      })
+      const json = await res.json()
+      if (res.ok && json.ok) setAiFilter(json.filter ?? {})
+    } finally {
+      setSmartBusy(false)
+    }
+  }
+
+  async function draftOutreach(channel: 'email' | 'sms') {
+    if (!selected) return
+    setDraftBusy(channel)
+    setDraft(null)
+    try {
+      const res = await fetch('/api/outreach/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId: selected.id, channel }),
+      })
+      const json = await res.json()
+      setDraft(res.ok && json.ok ? json.draft : `Failed: ${json.error ?? res.statusText}`)
+    } catch (err: any) {
+      setDraft(`Failed: ${String(err?.message ?? err)}`)
+    } finally {
+      setDraftBusy(null)
+    }
+  }
 
   async function refreshIntel(lead: Lead) {
     setRefreshing(true)
@@ -121,6 +164,11 @@ export default function LeadsPage() {
   }
 
   const filtered = useMemo(() => {
+    const af = aiFilter ?? {}
+    const includes = (val: string | null | undefined, term: unknown) =>
+      !term || (val ?? '').toLowerCase().includes(String(term).toLowerCase())
+    const allowedSorts = ['priority_score', 'lead_score', 'composite_efb_risk', 'distance_to_canby_mi']
+    const sortKey = (allowedSorts.includes(af.sort) ? af.sort : sortBy) as typeof sortBy
     return leads
       .filter(l => vertical === 'all' || l.vertical === vertical)
       .filter(l => loiStatus === 'all' || l.loi_status === loiStatus)
@@ -135,8 +183,28 @@ export default function LeadsPage() {
           l.primary_crop?.toLowerCase().includes(q)
         )
       })
-      .sort((a, b) => (b[sortBy] ?? 0) - (a[sortBy] ?? 0))
-  }, [leads, vertical, loiStatus, search, sortBy])
+      // AI smart-search layer (from /api/leads/smart-search)
+      .filter(l => !af.vertical || l.vertical === af.vertical)
+      .filter(l => !af.loi_status || l.loi_status === af.loi_status)
+      .filter(l => !af.priority_tier || l.priority_tier === af.priority_tier)
+      .filter(l => !af.action_recommendation || l.action_recommendation === af.action_recommendation)
+      .filter(l => af.min_priority_score == null || (l.priority_score ?? 0) >= af.min_priority_score)
+      .filter(l => includes(l.county, af.county))
+      .filter(l => includes(l.city, af.city))
+      .filter(l => includes(l.primary_crop, af.crop))
+      .filter(l => {
+        if (!af.text) return true
+        const q = String(af.text).toLowerCase()
+        return (
+          l.business_name?.toLowerCase().includes(q) ||
+          l.owner_name?.toLowerCase().includes(q) ||
+          l.city?.toLowerCase().includes(q) ||
+          l.county?.toLowerCase().includes(q) ||
+          l.primary_crop?.toLowerCase().includes(q)
+        )
+      })
+      .sort((a, b) => ((b[sortKey] as number) ?? 0) - ((a[sortKey] as number) ?? 0))
+  }, [leads, vertical, loiStatus, search, sortBy, aiFilter])
 
   return (
     <div className="p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade">
@@ -151,7 +219,32 @@ export default function LeadsPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4 mb-5 flex flex-wrap gap-3">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4 mb-5 space-y-3">
+        <form onSubmit={e => { e.preventDefault(); runSmartSearch() }} className="flex gap-2">
+          <input
+            value={smartQuery}
+            onChange={e => setSmartQuery(e.target.value)}
+            placeholder="✨ Smart search — e.g. “hottest hazelnut leads in Marion County not contacted”"
+            className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          <button
+            type="submit"
+            disabled={smartBusy || !smartQuery.trim()}
+            className="tap inline-flex items-center justify-center text-sm bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg px-4 transition-colors disabled:opacity-60"
+          >
+            {smartBusy ? '…' : 'Search'}
+          </button>
+          {aiFilter && (
+            <button
+              type="button"
+              onClick={() => { setAiFilter(null); setSmartQuery('') }}
+              className="tap inline-flex items-center text-sm text-slate-500 hover:text-slate-700 px-2"
+            >
+              Clear
+            </button>
+          )}
+        </form>
+        <div className="flex flex-wrap gap-3">
         <input
           type="text"
           placeholder="Search name, city, crop…"
@@ -184,6 +277,7 @@ export default function LeadsPage() {
           <option value="composite_efb_risk">Sort: EFB Risk</option>
           <option value="distance_to_canby_mi">Sort: Distance</option>
         </select>
+        </div>
       </div>
 
       <div className="flex gap-5">
@@ -385,6 +479,42 @@ export default function LeadsPage() {
               {converting ? 'Converting…' : '🤝 Convert to customer'}
             </button>
             {convertMsg && <p className="text-xs text-center text-slate-500">{convertMsg}</p>}
+
+            <div className="pt-3 border-t border-slate-100">
+              <div className="text-xs text-slate-400 mb-1.5">Draft outreach</div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => draftOutreach('email')}
+                  disabled={draftBusy !== null}
+                  className="tap inline-flex items-center justify-center flex-1 text-xs border border-slate-200 hover:border-brand-300 hover:text-brand-700 rounded-lg py-2 font-medium transition-colors disabled:opacity-60"
+                >
+                  {draftBusy === 'email' ? 'Drafting…' : '✉️ Email'}
+                </button>
+                <button
+                  onClick={() => draftOutreach('sms')}
+                  disabled={draftBusy !== null}
+                  className="tap inline-flex items-center justify-center flex-1 text-xs border border-slate-200 hover:border-brand-300 hover:text-brand-700 rounded-lg py-2 font-medium transition-colors disabled:opacity-60"
+                >
+                  {draftBusy === 'sms' ? 'Drafting…' : '💬 SMS'}
+                </button>
+              </div>
+              {draft && (
+                <div className="mt-2">
+                  <textarea
+                    readOnly
+                    value={draft}
+                    rows={7}
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                  <button
+                    onClick={() => navigator.clipboard?.writeText(draft)}
+                    className="tap inline-flex items-center text-xs text-slate-500 hover:text-slate-700 mt-1"
+                  >
+                    Copy
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
