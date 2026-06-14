@@ -102,6 +102,7 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
 | Route | Description |
 |---|---|
 | `/` | Overview — KPIs, EFB action queue, vertical breakdown, top leads, recent jobs |
+| `/assistant` | AI Ops Assistant — plain-English Q&A over leads/customers/jobs/fields/finance via read-only tools (needs `ANTHROPIC_API_KEY`) |
 | `/leads` | Full lead database with search, filters, EFB risk bars, detail panel |
 | `/pipeline` | LOI Kanban — 6-stage pipeline with one-click stage advance |
 | `/customers` | Customer CRM — customers, contracts, service history; convert leads to customers |
