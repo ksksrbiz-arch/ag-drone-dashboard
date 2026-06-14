@@ -138,11 +138,26 @@ dashboard current with no manual data entry.
 - **Endpoints:** `POST /api/enrich/run`, `POST /api/enrich/lead/[id]`,
   `GET /api/enrich/status`.
 
+### Supabase backend intelligence layer
+
+`supabase/migrations/20260614010000_intelligence_backend.sql` moves operational
+logic into Postgres so the platform is more autonomous:
+
+- **Triggers** — new leads are auto-enqueued (`enrichment_status='pending'`) so
+  they enter the research queue with no manual step; `updated_at` is auto-maintained.
+- **`mark_stale_leads(days)`** — re-queues leads whose enrichment has aged out
+  (called by the engine each run; can also be scheduled via pg_cron).
+- **`get_ops_kpis()`** — one-call aggregated KPI payload for the dashboards.
+- **Views** — `lead_priority_queue` (the canonical work queue) and
+  `next_best_actions` (outreach-ready leads, hottest first — surfaced on `/automation`).
+
+Apply it the same way (Supabase → SQL Editor). Additive and idempotent.
+
 **Setup:**
 
-1. Apply the migration `supabase/migrations/20260614000000_lead_intelligence_engine.sql`
-   (Supabase Dashboard → SQL Editor). It's additive and safe to run on the
-   existing database.
+1. Apply the migrations `supabase/migrations/20260614000000_lead_intelligence_engine.sql`
+   then `…010000_intelligence_backend.sql` (Supabase Dashboard → SQL Editor).
+   Both are additive and safe to run on the existing database.
 2. Set `ANTHROPIC_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in Vercel. (Without
    `ANTHROPIC_API_KEY` the engine still runs the algorithmic prioritization.)
 3. Set `CRON_SECRET`; set `ENRICHMENT_REQUIRE_SECRET=true` to lock down manual

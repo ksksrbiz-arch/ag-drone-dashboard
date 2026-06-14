@@ -36,6 +36,7 @@ const STATUS_META: Record<string, string> = {
 export default function AutomationPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [runs, setRuns] = useState<EnrichmentRun[]>([])
+  const [nextActions, setNextActions] = useState<Lead[]>([])
   const [caps, setCaps] = useState<Capabilities | null>(null)
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
@@ -44,6 +45,13 @@ export default function AutomationPage() {
   const loadLeads = useCallback(async () => {
     const { data } = await supabase.from('leads').select('*')
     setLeads((data ?? []) as Lead[])
+  }, [])
+
+  // From the Supabase `next_best_actions` view (intelligence_backend migration).
+  // Resolves empty if the view isn't present yet — no error surfaced.
+  const loadNextActions = useCallback(async () => {
+    const { data } = await supabase.from('next_best_actions').select('*').limit(8)
+    setNextActions((data ?? []) as Lead[])
   }, [])
 
   const loadRuns = useCallback(async () => {
@@ -66,16 +74,20 @@ export default function AutomationPage() {
   }, [])
 
   useEffect(() => {
-    Promise.all([loadLeads(), loadRuns(), loadStatus()]).then(() =>
-      setLoading(false)
+    Promise.all([loadLeads(), loadRuns(), loadStatus(), loadNextActions()]).then(
+      () => setLoading(false)
     )
 
     // Best-effort realtime so the board updates as the engine writes back.
     let channel: ReturnType<typeof supabase.channel> | null = null
     try {
+      const onLeads = () => {
+        loadLeads()
+        loadNextActions()
+      }
       channel = supabase
         .channel('automation')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, loadLeads)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, onLeads)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'enrichment_runs' }, loadRuns)
         .subscribe()
     } catch {
@@ -84,7 +96,7 @@ export default function AutomationPage() {
     return () => {
       if (channel) supabase.removeChannel(channel)
     }
-  }, [loadLeads, loadRuns, loadStatus])
+  }, [loadLeads, loadRuns, loadStatus, loadNextActions])
 
   async function runNow() {
     setRunning(true)
@@ -102,7 +114,7 @@ export default function AutomationPage() {
             `${json.aiCalls} AI call(s) · ${(json.durationMs / 1000).toFixed(1)}s`
         )
       }
-      await Promise.all([loadLeads(), loadRuns()])
+      await Promise.all([loadLeads(), loadRuns(), loadNextActions()])
     } catch (err: any) {
       setMessage(`Run failed: ${String(err?.message ?? err)}`)
     } finally {
@@ -290,6 +302,50 @@ export default function AutomationPage() {
           </div>
         )}
       </div>
+
+      {/* Next best actions — from the Supabase intelligence view */}
+      {nextActions.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
+          <h2 className="text-sm font-semibold text-slate-700 mb-1">Next Best Actions</h2>
+          <p className="text-xs text-slate-400 mb-4">
+            Outreach-ready leads, prioritized server-side — who to call next
+          </p>
+          <div className="space-y-2">
+            {nextActions.map(l => (
+              <div
+                key={l.id}
+                className="flex items-start justify-between gap-3 py-2 border-b border-slate-50 last:border-0"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-slate-800 truncate">
+                    {l.business_name ?? l.owner_name ?? 'Unknown'}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {[l.city, l.primary_crop].filter(Boolean).join(' · ') || '—'}
+                    {l.recommended_approach && (
+                      <span className="text-slate-400"> — {l.recommended_approach}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {l.best_contact_method && (
+                    <span className="text-xs text-slate-500">{l.best_contact_method}</span>
+                  )}
+                  {l.priority_tier && (
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+                        TIER_META[l.priority_tier as PriorityTier]?.cls ?? ''
+                      }`}
+                    >
+                      {l.priority_tier}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Run history */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
