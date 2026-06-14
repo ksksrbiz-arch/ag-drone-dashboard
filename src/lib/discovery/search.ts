@@ -30,8 +30,12 @@ export function searchConfigured(): boolean {
   return Boolean(process.env.BRAVE_API_KEY || process.env.TAVILY_API_KEY || workerConfigured())
 }
 
-/** Run all queries through the Cloudflare Worker (Brave+Tavily + KV cache). */
+/** Run all queries through the Cloudflare Worker (Brave+Tavily + KV cache).
+ *  Fails fast (5s) so a misconfigured/unreachable worker can't stall a search —
+ *  the caller falls back to direct providers. */
 async function workerSearch(queries: string[], perQuery: number): Promise<SearchHit[]> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 5000)
   try {
     const res = await fetch(process.env.DISCOVERY_WORKER_URL!, {
       method: 'POST',
@@ -40,12 +44,15 @@ async function workerSearch(queries: string[], perQuery: number): Promise<Search
         Authorization: `Bearer ${process.env.DISCOVERY_WORKER_SECRET}`,
       },
       body: JSON.stringify({ queries, perQuery }),
+      signal: ctrl.signal,
     })
     if (!res.ok) return []
     const json = await res.json()
     return Array.isArray(json?.hits) ? (json.hits as SearchHit[]) : []
   } catch {
     return []
+  } finally {
+    clearTimeout(timer)
   }
 }
 
