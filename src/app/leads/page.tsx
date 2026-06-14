@@ -53,6 +53,8 @@ export default function LeadsPage() {
   const [sortBy, setSortBy] = useState<'priority_score' | 'lead_score' | 'composite_efb_risk' | 'distance_to_canby_mi'>('priority_score')
   const [selected, setSelected] = useState<Lead | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [converting, setConverting] = useState(false)
+  const [convertMsg, setConvertMsg] = useState<string | null>(null)
 
   useEffect(() => {
     supabase
@@ -64,6 +66,10 @@ export default function LeadsPage() {
         setLoading(false)
       })
   }, [])
+
+  useEffect(() => {
+    setConvertMsg(null)
+  }, [selected?.id])
 
   async function refreshIntel(lead: Lead) {
     setRefreshing(true)
@@ -77,6 +83,40 @@ export default function LeadsPage() {
       }
     } finally {
       setRefreshing(false)
+    }
+  }
+
+  async function convertToCustomer(lead: Lead) {
+    setConverting(true)
+    setConvertMsg(null)
+    try {
+      const { data: existing } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('lead_id', lead.id)
+        .limit(1)
+      if (existing && existing.length > 0) {
+        setConvertMsg('Already a customer ✓')
+        return
+      }
+      const { error } = await supabase.from('customers').insert({
+        business_name: lead.business_name,
+        contact_name: lead.contact_name ?? lead.owner_name,
+        phone: lead.phone,
+        email: lead.email,
+        address: lead.address_physical,
+        city: lead.city,
+        county: lead.county,
+        state: lead.state ?? 'OR',
+        primary_crop: lead.primary_crop,
+        est_acreage: lead.est_acreage,
+        status: lead.loi_status === 'loi_signed' ? 'active' : 'prospect',
+        lead_id: lead.id,
+        notes: lead.research_summary,
+      })
+      setConvertMsg(error ? `Failed: ${error.message}` : 'Added to Customers ✓')
+    } finally {
+      setConverting(false)
     }
   }
 
@@ -335,6 +375,16 @@ export default function LeadsPage() {
             >
               {refreshing ? 'Researching…' : '🤖 Refresh intel'}
             </button>
+
+            <button
+              onClick={() => convertToCustomer(selected)}
+              disabled={converting}
+              className="tap inline-flex items-center justify-center gap-1.5 w-full text-xs bg-white border border-brand-300 text-brand-700 hover:bg-brand-50 rounded-lg
+                         py-2 font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {converting ? 'Converting…' : '🤝 Convert to customer'}
+            </button>
+            {convertMsg && <p className="text-xs text-center text-slate-500">{convertMsg}</p>}
           </div>
         )}
       </div>

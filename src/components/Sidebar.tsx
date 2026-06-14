@@ -8,6 +8,7 @@ const navItems = [
   { href: '/',           label: 'Overview',   icon: '📊' },
   { href: '/leads',      label: 'Leads',      icon: '🌾' },
   { href: '/pipeline',   label: 'Pipeline',   icon: '🔄' },
+  { href: '/customers',  label: 'Customers',  icon: '🤝' },
   { href: '/jobs',       label: 'Jobs',       icon: '✈️' },
   { href: '/field-ops',  label: 'Field Ops',  icon: '🌤️' },
   { href: '/finance',    label: 'Finance',    icon: '💵' },
