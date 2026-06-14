@@ -26,6 +26,10 @@ body {
 @layer utilities {
   .text-balance { text-wrap: balance; }
 
+  /* Touch targets — ensure interactive controls meet the ~44px tap minimum. */
+  .tap { min-height: 44px; }
+  .tap-sq { min-height: 44px; min-width: 44px; }
+
   .animate-fade { animation: fadeUp 0.4s ease-out both; }
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(8px); }

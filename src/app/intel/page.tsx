@@ -8,6 +8,7 @@ import {
   IntelBoardSkeleton,
   MapSkeleton,
 } from '@/components/intel/Skeletons'
+import { ActionIcon } from '@/components/intel/icons'
 
 // Leaflet touches `window`, so load the map client-side only with a skeleton
 // fallback while its chunk hydrates.
@@ -17,10 +18,10 @@ const RiskMap = dynamic(() => import('@/components/intel/RiskMap'), {
 })
 
 const ACTION_CONFIG: Record<ActionRec, { label: string; bg: string; border: string; text: string; dot: string }> = {
-  TREAT_NOW:   { label: '🔴 Treat Now',   bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-700',    dot: 'bg-red-500'    },
-  SCOUT_NOW:   { label: '🟠 Scout Now',   bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', dot: 'bg-orange-500' },
-  CONTACT_NOW: { label: '🟡 Contact Now', bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-700', dot: 'bg-yellow-400' },
-  MONITOR:     { label: '🟢 Monitor',     bg: 'bg-green-50',  border: 'border-green-200',  text: 'text-green-700',  dot: 'bg-green-500'  },
+  TREAT_NOW:   { label: 'Treat Now',   bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-700',    dot: 'bg-red-500'    },
+  SCOUT_NOW:   { label: 'Scout Now',   bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', dot: 'bg-orange-500' },
+  CONTACT_NOW: { label: 'Contact Now', bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-700', dot: 'bg-yellow-400' },
+  MONITOR:     { label: 'Monitor',     bg: 'bg-green-50',  border: 'border-green-200',  text: 'text-green-700',  dot: 'bg-green-500'  },
 }
 
 export default function IntelPage() {
@@ -81,7 +82,7 @@ export default function IntelPage() {
         <select
           value={crop}
           onChange={e => setCrop(e.target.value)}
-          className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="tap text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
         >
           {crops.map(c => <option key={c} value={c}>{c === 'all' ? 'All Crops' : c}</option>)}
         </select>
@@ -126,7 +127,7 @@ export default function IntelPage() {
                   <button
                     key={label}
                     onClick={() => setShowRiskOverlay(on)}
-                    className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
+                    className={`tap inline-flex items-center justify-center text-xs px-3 py-1 rounded-md font-medium transition-colors ${
                       showRiskOverlay === on
                         ? 'bg-slate-800 text-white'
                         : 'text-slate-500 hover:text-slate-700'
@@ -139,7 +140,7 @@ export default function IntelPage() {
             )}
             <button
               onClick={() => setShowMap(v => !v)}
-              className="text-xs px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-400 transition-colors"
+              className="tap inline-flex items-center justify-center text-xs px-3 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-400 transition-colors"
             >
               {showMap ? 'Hide map' : 'Show map'}
             </button>
@@ -172,7 +173,10 @@ export default function IntelPage() {
               return (
                 <div key={action} className="flex flex-col gap-2">
                   <div className={`flex items-center justify-between px-3 py-2 rounded-lg border ${cfg.bg} ${cfg.border}`}>
-                    <span className={`text-xs font-bold ${cfg.text}`}>{cfg.label}</span>
+                    <span className={`flex items-center gap-1.5 text-xs font-bold ${cfg.text}`}>
+                      <ActionIcon action={action} />
+                      {cfg.label}
+                    </span>
                     <span className={`text-xs font-bold ${cfg.text}`}>{group.length}</span>
                   </div>
                   <div className="space-y-2">
@@ -201,7 +205,7 @@ export default function IntelPage() {
                 <h3 className="font-semibold text-slate-900 text-sm leading-tight">
                   {selected.business_name ?? selected.owner_name ?? 'Detail'}
                 </h3>
-                <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
+                <button onClick={() => setSelected(null)} aria-label="Close detail" className="tap-sq inline-flex items-center justify-center text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
               </div>
 
               <div className="text-xs text-slate-500">{selected.city}, {selected.county} Co. · {selected.primary_crop}</div>

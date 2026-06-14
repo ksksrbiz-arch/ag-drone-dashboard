@@ -158,7 +158,7 @@ function LeadCard({
         <button
           onClick={() => onAdvance(lead.id, nextStage)}
           disabled={isUpdating}
-          className="w-full text-xs bg-brand-500 hover:bg-brand-600 text-white rounded
+          className="tap inline-flex items-center justify-center w-full text-xs bg-brand-500 hover:bg-brand-600 text-white rounded
                      py-1.5 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isUpdating ? '…' : `→ ${STAGES.find(s => s.status === nextStage)?.label}`}

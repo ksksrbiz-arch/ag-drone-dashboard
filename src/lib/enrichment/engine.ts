@@ -49,6 +49,15 @@ export async function runEnrichment(opts: RunOptions): Promise<EngineRunSummary>
   const startedAt = Date.now()
   const supabase = getAdminClient()
 
+  // Backend-side stale sweep (no-op until the intelligence_backend migration
+  // is applied — the RPC just returns an error we ignore).
+  if (!opts.leadId) {
+    await supabase.rpc('mark_stale_leads', { p_days: STALE_DAYS }).then(
+      () => {},
+      () => {}
+    )
+  }
+
   const leads = await selectLeads(supabase, opts)
 
   // Open an audit row so the dashboard can show a run in progress.
