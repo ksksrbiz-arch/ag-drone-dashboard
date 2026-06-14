@@ -248,6 +248,21 @@ async function enrichOne(
     patch.enrichment_status = 'enriched'
     patch.enriched_at = new Date().toISOString()
 
+    // Auto-tag (additive) via the cheap inference layer (Groq/OpenRouter/Claude).
+    // Best-effort — never blocks the enrichment write. Disable with ENRICHMENT_AUTOTAG=false.
+    if (process.env.ENRICHMENT_AUTOTAG !== 'false') {
+      try {
+        const { suggestLeadTags } = await import('@/lib/ai/tagging')
+        const newTags = await suggestLeadTags(merged)
+        if (newTags.length) {
+          patch.tags = Array.from(new Set([...((lead.tags as string[]) ?? []), ...newTags]))
+          fieldsUpdated.push('tags')
+        }
+      } catch {
+        /* tagging is best-effort */
+      }
+    }
+
     await applyPatch(supabase, lead.id, patch)
 
     return {

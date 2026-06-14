@@ -61,6 +61,9 @@ export default function LeadsPage() {
   const [smartBusy, setSmartBusy] = useState(false)
   const [draft, setDraft] = useState<string | null>(null)
   const [draftBusy, setDraftBusy] = useState<'email' | 'sms' | null>(null)
+  const [rawNotes, setRawNotes] = useState('')
+  const [structured, setStructured] = useState<any>(null)
+  const [notesBusy, setNotesBusy] = useState(false)
 
   useEffect(() => {
     supabase
@@ -76,7 +79,51 @@ export default function LeadsPage() {
   useEffect(() => {
     setConvertMsg(null)
     setDraft(null)
+    setRawNotes('')
+    setStructured(null)
   }, [selected?.id])
+
+  async function structureNotes() {
+    if (!rawNotes.trim() || notesBusy || !selected) return
+    setNotesBusy(true)
+    setStructured(null)
+    try {
+      const res = await fetch('/api/notes/structure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId: selected.id, notes: rawNotes }),
+      })
+      const json = await res.json()
+      setStructured(res.ok && json.ok ? json.structured : { error: json.error ?? res.statusText })
+    } catch (err: any) {
+      setStructured({ error: String(err?.message ?? err) })
+    } finally {
+      setNotesBusy(false)
+    }
+  }
+
+  async function saveStructured() {
+    if (!selected || !structured || structured.error) return
+    const lines = [
+      structured.summary,
+      ...(Array.isArray(structured.next_steps) && structured.next_steps.length
+        ? ['Next steps:', ...structured.next_steps.map((s: string) => `- ${s}`)]
+        : []),
+    ]
+      .filter(Boolean)
+      .join('\n')
+    const stamp = new Date().toLocaleDateString()
+    const appended = `${selected.notes ? selected.notes + '\n\n' : ''}[${stamp}] ${lines}`
+    const patch: Record<string, unknown> = { notes: appended }
+    if (structured.suggested_loi_status) patch.loi_status = structured.suggested_loi_status
+    const { data } = await supabase.from('leads').update(patch).eq('id', selected.id).select().single()
+    if (data) {
+      setLeads(prev => prev.map(l => (l.id === (data as Lead).id ? (data as Lead) : l)))
+      setSelected(data as Lead)
+    }
+    setStructured(null)
+    setRawNotes('')
+  }
 
   async function runSmartSearch() {
     const q = smartQuery.trim()
@@ -514,6 +561,49 @@ export default function LeadsPage() {
                   </button>
                 </div>
               )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100">
+              <div className="text-xs text-slate-400 mb-1.5">Structure call/meeting notes</div>
+              <textarea
+                value={rawNotes}
+                onChange={e => setRawNotes(e.target.value)}
+                rows={3}
+                placeholder="Paste rough notes from a call or visit…"
+                className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <button
+                onClick={structureNotes}
+                disabled={notesBusy || !rawNotes.trim()}
+                className="tap inline-flex items-center justify-center w-full mt-2 text-xs bg-white border border-brand-300 text-brand-700 hover:bg-brand-50 rounded-lg py-2 font-medium transition-colors disabled:opacity-60"
+              >
+                {notesBusy ? 'Structuring…' : '🧩 Structure notes'}
+              </button>
+              {structured &&
+                (structured.error ? (
+                  <p className="text-xs text-red-600 mt-2">{structured.error}</p>
+                ) : (
+                  <div className="mt-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-1.5">
+                    {structured.summary && <p>{structured.summary}</p>}
+                    {Array.isArray(structured.next_steps) && structured.next_steps.length > 0 && (
+                      <ul className="list-disc pl-4 space-y-0.5">
+                        {structured.next_steps.map((s: string, i: number) => <li key={i}>{s}</li>)}
+                      </ul>
+                    )}
+                    {structured.suggested_loi_status && (
+                      <p className="text-slate-500">
+                        Suggested stage:{' '}
+                        <span className="font-medium">{String(structured.suggested_loi_status).replace(/_/g, ' ')}</span>
+                      </p>
+                    )}
+                    <button
+                      onClick={saveStructured}
+                      className="tap inline-flex items-center justify-center w-full mt-1 text-xs bg-brand-500 hover:bg-brand-600 text-white rounded-lg py-2 font-medium transition-colors"
+                    >
+                      Save to lead
+                    </button>
+                  </div>
+                ))}
             </div>
           </div>
         )}
