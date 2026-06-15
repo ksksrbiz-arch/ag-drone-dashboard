@@ -237,6 +237,39 @@ export const TOOLS = [
       required: ['operation'],
     },
   },
+  // ── Multi-step bulk actions (staff only, capped at 100) ──────────────────
+  {
+    name: 'bulk_tag_leads',
+    description:
+      'Add tag(s) to EVERY lead matching the given filters at once (county/city/crop/vertical/priority_tier/action_recommendation/loi_status/enrichment_status/min_priority_score). Use for plans like "tag all stale P1 hazelnut leads follow-up". Staff only; affects up to 100 leads.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tags: { type: 'array', items: { type: 'string' } },
+        county: { type: 'string' }, city: { type: 'string' }, crop: { type: 'string' },
+        vertical: { type: 'string' }, priority_tier: { type: 'string' },
+        action_recommendation: { type: 'string' }, loi_status: { type: 'string' },
+        enrichment_status: { type: 'string' }, min_priority_score: { type: 'number' },
+      },
+      required: ['tags'],
+    },
+  },
+  {
+    name: 'bulk_update_stage',
+    description:
+      'Set the pipeline (LOI) stage on EVERY lead matching the filters at once. Staff only; affects up to 100 leads. The loi_status here is the TARGET stage to set, not a filter.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        loi_status: { type: 'string', enum: LOI_STAGES },
+        county: { type: 'string' }, city: { type: 'string' }, crop: { type: 'string' },
+        vertical: { type: 'string' }, priority_tier: { type: 'string' },
+        action_recommendation: { type: 'string' }, enrichment_status: { type: 'string' },
+        min_priority_score: { type: 'number' },
+      },
+      required: ['loi_status'],
+    },
+  },
 ]
 
 type Args = Record<string, any>
@@ -477,6 +510,51 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       }
     }
 
+    // ── multi-step bulk actions ─────────────────────────────────────────────
+    case 'bulk_tag_leads': {
+      if (!ctx.isStaff) return staffOnly
+      const tags = Array.isArray(args.tags) ? args.tags.filter((t: any) => typeof t === 'string' && t.trim()).map((t: string) => t.trim()) : []
+      if (!tags.length) return { error: 'No tags provided.' }
+      let q = supabase.from('leads').select('id, tags').limit(100)
+      q = applyLeadFilters(q, args)
+      const { data, error } = await q
+      if (error) return { error: error.message }
+      const rows = (data ?? []) as any[]
+      const changedIds: string[] = []
+      for (const row of rows) {
+        const existing: string[] = row.tags ?? []
+        const merged = Array.from(new Set([...existing, ...tags]))
+        if (merged.length === existing.length) continue
+        const { error: e } = await supabase.from('leads').update({ tags: merged }).eq('id', row.id)
+        if (!e) changedIds.push(row.id)
+      }
+      if (changedIds.length) {
+        ctx.actions.push({ type: 'refresh' })
+        ctx.undo = { label: `tags on ${changedIds.length} leads`, tool: '_bulk_untag', args: { ids: changedIds, tags } }
+      }
+      return { ok: true, matched: rows.length, tagged: changedIds.length, tags, capped: rows.length >= 100 }
+    }
+    case 'bulk_update_stage': {
+      if (!ctx.isStaff) return staffOnly
+      if (!LOI_STAGES.includes(args.loi_status)) return { error: 'Invalid loi_status.' }
+      let q = supabase.from('leads').select('id, loi_status').limit(100)
+      q = applyLeadFilters(q, { ...args, loi_status: undefined }) // loi_status is the target, not a filter
+      const { data, error } = await q
+      if (error) return { error: error.message }
+      const rows = (data ?? []) as any[]
+      const prior: { id: string; loi_status: string }[] = []
+      for (const row of rows) {
+        if (row.loi_status === args.loi_status) continue
+        const { error: e } = await supabase.from('leads').update({ loi_status: args.loi_status }).eq('id', row.id)
+        if (!e) prior.push({ id: row.id, loi_status: row.loi_status })
+      }
+      if (prior.length) {
+        ctx.actions.push({ type: 'refresh' })
+        ctx.undo = { label: `stage of ${prior.length} leads`, tool: '_bulk_revert_stage', args: { items: prior } }
+      }
+      return { ok: true, matched: rows.length, updated: prior.length, loi_status: args.loi_status, capped: rows.length >= 100 }
+    }
+
     // ── internal undo operations (not model-callable) ───────────────────────
     case '_revert_lead': {
       if (!ctx.isStaff) return staffOnly
@@ -491,6 +569,27 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       if (!args.id) return { error: 'bad undo args' }
       const { error } = await supabase.from('customers').delete().eq('id', args.id)
       if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true }
+    }
+    case '_bulk_untag': {
+      if (!ctx.isStaff) return staffOnly
+      const ids: string[] = Array.isArray(args.ids) ? args.ids : []
+      const tags: string[] = Array.isArray(args.tags) ? args.tags : []
+      if (!ids.length || !tags.length) return { error: 'bad undo args' }
+      const { data } = await supabase.from('leads').select('id, tags').in('id', ids)
+      for (const row of (data ?? []) as any[]) {
+        const next = (row.tags ?? []).filter((t: string) => !tags.includes(t))
+        await supabase.from('leads').update({ tags: next }).eq('id', row.id)
+      }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true }
+    }
+    case '_bulk_revert_stage': {
+      if (!ctx.isStaff) return staffOnly
+      const items: { id: string; loi_status: string }[] = Array.isArray(args.items) ? args.items : []
+      if (!items.length) return { error: 'bad undo args' }
+      for (const it of items) await supabase.from('leads').update({ loi_status: it.loi_status }).eq('id', it.id)
       ctx.actions.push({ type: 'refresh' })
       return { ok: true }
     }

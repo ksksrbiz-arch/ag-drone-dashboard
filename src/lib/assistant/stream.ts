@@ -1,0 +1,153 @@
+import { TOOLS, runTool, type ToolContext } from './tools'
+
+// ─────────────────────────────────────────────────────────────────────────
+// Streaming agentic loop for the Sidekick assistant (Groq, OpenAI-compatible).
+//
+// Streams each turn token-by-token. When the model calls tools, we emit a
+// status line, run them, and continue; when it produces the final text, those
+// tokens are already streamed. Emits typed SSE events via `emit`.
+// ─────────────────────────────────────────────────────────────────────────
+
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+const MAX_TURNS = 6
+
+const OPENAI_TOOLS = TOOLS.map(t => ({
+  type: 'function' as const,
+  function: { name: t.name, description: t.description, parameters: t.input_schema },
+}))
+
+export type StreamEvent =
+  | { type: 'status'; text: string }
+  | { type: 'token'; text: string }
+  | { type: 'done'; actions: ToolContext['actions']; undo: ToolContext['undo'] }
+  | { type: 'error'; error: string }
+
+const TOOL_STATUS: Record<string, string> = {
+  get_kpis: 'Pulling the latest numbers…',
+  query_leads: 'Searching leads…',
+  count_leads: 'Counting leads…',
+  query_customers: 'Looking up customers…',
+  query_jobs: 'Checking jobs…',
+  query_fields: 'Checking mapped fields…',
+  query_alerts: 'Checking alerts…',
+  navigate: 'Opening that…',
+  update_lead_stage: 'Updating the pipeline stage…',
+  tag_lead: 'Tagging…',
+  convert_lead_to_customer: 'Converting to a customer…',
+  run_operation: 'Running that operation…',
+  bulk_tag_leads: 'Tagging the matching leads…',
+  bulk_update_stage: 'Updating the matching leads…',
+}
+
+export async function streamGroqAssistant(
+  userMessages: { role: string; content: string }[],
+  system: string,
+  ctx: ToolContext,
+  emit: (e: StreamEvent) => void
+): Promise<void> {
+  const key = process.env.GROQ_API_KEY
+  if (!key) {
+    emit({ type: 'error', error: 'GROQ_API_KEY is not set' })
+    return
+  }
+
+  const messages: any[] = [
+    { role: 'system', content: system },
+    ...userMessages.slice(-12).map(m => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: String(m.content ?? ''),
+    })),
+  ]
+
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    const res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages,
+        tools: OPENAI_TOOLS,
+        tool_choice: 'auto',
+        max_tokens: 1500,
+        temperature: 0.2,
+        stream: true,
+      }),
+    })
+    if (!res.ok || !res.body) {
+      emit({ type: 'error', error: `Groq ${res.status}` })
+      return
+    }
+
+    let content = ''
+    const toolCalls: { id: string; name: string; args: string }[] = []
+    let finish = ''
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        const t = line.trim()
+        if (!t.startsWith('data:')) continue
+        const payload = t.slice(5).trim()
+        if (payload === '[DONE]') continue
+        let json: any
+        try {
+          json = JSON.parse(payload)
+        } catch {
+          continue
+        }
+        const choice = json?.choices?.[0]
+        const delta = choice?.delta
+        if (choice?.finish_reason) finish = choice.finish_reason
+        if (delta?.content) {
+          content += delta.content
+          emit({ type: 'token', text: delta.content })
+        }
+        if (Array.isArray(delta?.tool_calls)) {
+          for (const tc of delta.tool_calls) {
+            const i = tc.index ?? 0
+            toolCalls[i] = toolCalls[i] || { id: '', name: '', args: '' }
+            if (tc.id) toolCalls[i].id = tc.id
+            if (tc.function?.name) toolCalls[i].name = tc.function.name
+            if (tc.function?.arguments) toolCalls[i].args += tc.function.arguments
+          }
+        }
+      }
+    }
+
+    const calls = toolCalls.filter(Boolean)
+    if (calls.length && finish !== 'stop') {
+      messages.push({
+        role: 'assistant',
+        content: content || null,
+        tool_calls: calls.map(c => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.args } })),
+      })
+      for (const c of calls) {
+        emit({ type: 'status', text: TOOL_STATUS[c.name] ?? 'Working…' })
+        let args: Record<string, unknown> = {}
+        try {
+          args = JSON.parse(c.args || '{}')
+        } catch {}
+        const result = await runTool(c.name, args, ctx)
+        messages.push({ role: 'tool', tool_call_id: c.id, content: JSON.stringify(result).slice(0, 12000) })
+      }
+      continue
+    }
+
+    if (!content.trim()) {
+      const fallback = ctx.actions.some(a => a.type === 'navigate') ? 'Opening that for you.' : 'Done.'
+      emit({ type: 'token', text: fallback })
+    }
+    emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null })
+    return
+  }
+
+  emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null })
+}

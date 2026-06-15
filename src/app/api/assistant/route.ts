@@ -93,7 +93,32 @@ export async function POST(req: NextRequest) {
   }
   const system = SYSTEM + contextNote
 
-  // ── Groq path (default) ──────────────────────────────────────────────────
+  // ── Streaming path (SSE) — used by the Sidekick UI ───────────────────────
+  if (body?.stream && PROVIDER === 'groq' && groqConfigured()) {
+    const { streamGroqAssistant } = await import('@/lib/assistant/stream')
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        const emit = (e: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`))
+        try {
+          await streamGroqAssistant(incoming, system, ctx, emit as any)
+        } catch (err: any) {
+          emit({ type: 'error', error: String(err?.message ?? err) })
+        } finally {
+          controller.close()
+        }
+      },
+    })
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      },
+    })
+  }
+
+  // ── Groq path (default, non-streaming) ───────────────────────────────────
   if (PROVIDER === 'groq') {
     if (!groqConfigured()) {
       return NextResponse.json(
