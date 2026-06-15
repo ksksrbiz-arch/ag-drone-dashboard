@@ -138,6 +138,40 @@ export const TOOLS = [
     },
   },
   {
+    name: 'get_customer_detail',
+    description:
+      'Get the full profile of ONE customer — contact info, location, crop/acreage, status, and notes. Identify by customer_id or a name search. Use before answering detailed questions about a customer.',
+    input_schema: {
+      type: 'object',
+      properties: { customer_id: { type: 'string' }, search: { type: 'string', description: 'business/contact name' } },
+      required: [],
+    },
+  },
+  {
+    name: 'update_customer_status',
+    description:
+      'Set a customer\'s status (prospect / active / inactive). Identify by customer_id or a name search. Staff only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        customer_id: { type: 'string' },
+        search: { type: 'string' },
+        status: { type: 'string', enum: ['prospect', 'active', 'inactive'] },
+      },
+      required: ['status'],
+    },
+  },
+  {
+    name: 'add_customer_note',
+    description:
+      'Append a dated note to a customer record (keeps existing notes). Identify by customer_id or a name search. Staff only.',
+    input_schema: {
+      type: 'object',
+      properties: { customer_id: { type: 'string' }, search: { type: 'string' }, note: { type: 'string' } },
+      required: ['note'],
+    },
+  },
+  {
     name: 'query_jobs',
     description: 'Search jobs by status. Returns job rows with amounts and schedule.',
     input_schema: {
@@ -446,6 +480,27 @@ async function resolveJob(supabase: any, args: Args) {
   return { error: 'Which job? Give me a job title or customer name.' }
 }
 
+/** Resolve a single customer by id or by a business/contact name search. */
+async function resolveCustomer(supabase: any, args: Args) {
+  if (args.customer_id) {
+    const { data } = await supabase.from('customers').select('*').eq('id', args.customer_id).limit(1)
+    if (data?.[0]) return { customer: data[0] }
+    return { error: `No customer with id ${args.customer_id}.` }
+  }
+  if (args.search) {
+    const { data } = await supabase
+      .from('customers')
+      .select('*')
+      .or(`business_name.ilike.%${args.search}%,contact_name.ilike.%${args.search}%`)
+      .limit(5)
+    if (!data?.length) return { error: `No customer matches "${args.search}".` }
+    if (data.length > 1)
+      return { error: `"${args.search}" matched ${data.length} customers (e.g. ${data.slice(0, 3).map((c: any) => c.business_name ?? c.contact_name).join(', ')}). Be more specific.` }
+    return { customer: data[0] }
+  }
+  return { error: 'Which customer? Give me a name.' }
+}
+
 /** Idempotency cooldown: true if a run row for `table` started within `secs`. */
 async function ranRecently(supabase: any, table: string, secs: number): Promise<boolean> {
   const since = new Date(Date.now() - secs * 1000).toISOString()
@@ -489,6 +544,59 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
         q = q.or(`business_name.ilike.%${args.search}%,contact_name.ilike.%${args.search}%,city.ilike.%${args.search}%`)
       const { data, error } = await q
       return error ? { error: error.message } : data
+    }
+    case 'get_customer_detail': {
+      const r = await resolveCustomer(supabase, args)
+      if (r.error) return r
+      const c = r.customer
+      return {
+        customer: {
+          id: c.id,
+          business_name: c.business_name,
+          contact_name: c.contact_name,
+          phone: c.phone,
+          email: c.email,
+          city: c.city,
+          county: c.county,
+          state: c.state,
+          primary_crop: c.primary_crop,
+          est_acreage: c.est_acreage,
+          status: c.status,
+          notes: c.notes,
+        },
+      }
+    }
+    case 'update_customer_status': {
+      if (!ctx.isStaff) return staffOnly
+      if (!['prospect', 'active', 'inactive'].includes(args.status)) return { error: 'Invalid status.' }
+      const r = await resolveCustomer(supabase, args)
+      if (r.error) return r
+      const c = r.customer
+      const name = c.business_name ?? c.contact_name
+      if (c.status === args.status) {
+        return { ok: true, noop: true, customer: name, status: args.status, message: `${name} is already ${args.status}.` }
+      }
+      const { error } = await supabase.from('customers').update({ status: args.status }).eq('id', c.id)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      ctx.undo = { label: `${name}'s status (back to ${c.status})`, tool: '_revert_customer', args: { id: c.id, patch: { status: c.status } } }
+      return { ok: true, customer: name, status: args.status }
+    }
+    case 'add_customer_note': {
+      if (!ctx.isStaff) return staffOnly
+      const note = String(args.note ?? '').trim()
+      if (!note) return { error: 'No note text provided.' }
+      const r = await resolveCustomer(supabase, args)
+      if (r.error) return r
+      const c = r.customer
+      const name = c.business_name ?? c.contact_name
+      const stamp = new Date().toISOString().slice(0, 10)
+      const prev: string = c.notes ?? ''
+      const next = (prev ? prev + '\n' : '') + `[${stamp}] ${note}`
+      const { error } = await supabase.from('customers').update({ notes: next }).eq('id', c.id)
+      if (error) return { error: error.message }
+      ctx.undo = { label: `note on ${name}`, tool: '_revert_customer', args: { id: c.id, patch: { notes: prev } } }
+      return { ok: true, customer: name, note }
     }
     case 'query_jobs': {
       let q = supabase.from('jobs').select(JOB_COLS).limit(cap(args.limit, 15, 50))
@@ -926,6 +1034,14 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       if (!ctx.isStaff) return staffOnly
       if (!args.id) return { error: 'bad undo args' }
       const { error } = await supabase.from('customers').delete().eq('id', args.id)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true }
+    }
+    case '_revert_customer': {
+      if (!ctx.isStaff) return staffOnly
+      if (!args.id || !args.patch) return { error: 'bad undo args' }
+      const { error } = await supabase.from('customers').update(args.patch).eq('id', args.id)
       if (error) return { error: error.message }
       ctx.actions.push({ type: 'refresh' })
       return { ok: true }
