@@ -1,5 +1,5 @@
 import { TOOLS, runTool, type ToolContext, type ClientAction, type UndoSpec } from './tools'
-import { modelCandidates, noteWorkingModel, isModelError } from './groqModel'
+import { modelCandidates, noteWorkingModel, shouldTryNextModel } from './groqModel'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Groq inference provider for the Sidekick assistant — OpenAI-compatible chat
@@ -40,6 +40,7 @@ export async function runGroqAssistant(
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     let res: Response | null = null
+    let lastErr = ''
     for (const model of modelCandidates()) {
       res = await fetch(GROQ_URL, {
         method: 'POST',
@@ -51,10 +52,21 @@ export async function runGroqAssistant(
         break
       }
       const body = await res.text()
-      if (!isModelError(res.status, body)) throw new Error(`Groq ${res.status}: ${body.slice(0, 300)}`)
-      // model unavailable — try the next candidate
+      lastErr = `Groq ${res.status}: ${body.slice(0, 300)}`
+      // A model that's unavailable or fumbled the tool call — try the next
+      // candidate. Anything else is a real error.
+      if (!shouldTryNextModel(res.status, body)) throw new Error(lastErr)
     }
-    if (!res || !res.ok) throw new Error('No usable Groq model')
+    if (!res || !res.ok) {
+      // Every candidate failed (e.g. all returned tool_use_failed). Degrade
+      // gracefully instead of surfacing a raw Groq 400 to the user.
+      console.error('[groq] all model candidates failed:', lastErr)
+      return {
+        reply: 'Sorry, I had trouble with that one — try rephrasing it?',
+        actions: ctx.actions,
+        undo: ctx.undo ?? null,
+      }
+    }
 
     const json = await res.json()
     const msg = json?.choices?.[0]?.message

@@ -1,5 +1,5 @@
 import { TOOLS, runTool, type ToolContext } from './tools'
-import { modelCandidates, noteWorkingModel, isModelError } from './groqModel'
+import { modelCandidates, noteWorkingModel, shouldTryNextModel } from './groqModel'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Streaming agentic loop for the Sidekick assistant (Groq, OpenAI-compatible).
@@ -73,14 +73,17 @@ export async function streamGroqAssistant(
         break
       }
       const body = await res.text().catch(() => '')
-      if (!isModelError(res.status, body)) {
+      // A model that's unavailable or fumbled the tool call — try the next
+      // candidate. Anything else is a real error.
+      if (!shouldTryNextModel(res.status, body)) {
         emit({ type: 'error', error: `Groq ${res.status}` })
         return
       }
-      // model unavailable — try the next candidate
     }
     if (!res || !res.ok || !res.body) {
-      emit({ type: 'error', error: 'No usable Groq model' })
+      // Every candidate failed — stream a graceful message rather than a raw error.
+      emit({ type: 'token', text: 'Sorry, I had trouble with that one — try rephrasing it?' })
+      emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null })
       return
     }
 
