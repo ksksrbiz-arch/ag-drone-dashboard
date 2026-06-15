@@ -51,6 +51,7 @@ const PAGES: Record<string, string> = {
   fields: '/fields',
   finance: '/finance',
   intel: '/intel', // EFB satellite risk map / Intelligence Hub
+  knowledge: '/knowledge', // knowledge base — files / folders / notes
   alerts: '/alerts',
   automation: '/automation',
 }
@@ -218,6 +219,45 @@ export const TOOLS = [
     name: 'list_knowledge',
     description: 'List what is in the knowledge base — folders and document titles. Use when the user asks what reference material / files / docs are available, or to discover what to search.',
     input_schema: { type: 'object', properties: { folder: { type: 'string' } }, required: [] },
+  },
+  {
+    name: 'add_to_knowledge',
+    description:
+      'Save a note to the knowledge base so the team (and you) can use it later. Use when the user says "remember that…", "save this as…", "add this to the knowledge base / as an SOP / pricing / script". Re-saving the same title+folder updates it in place. Staff only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'short document title' },
+        content: { type: 'string', description: 'the text to store' },
+        folder: { type: 'string', description: 'optional folder, defaults to General' },
+      },
+      required: ['title', 'content'],
+    },
+  },
+  // ── Deeper read + drafting ───────────────────────────────────────────────
+  {
+    name: 'get_lead_detail',
+    description:
+      'Get the full profile of ONE lead — contact info, crop/acreage, EFB risk, priority, pipeline stage, tags, research summary and recommended approach. Identify by lead_id, by name search, or the lead currently open on screen. Use before answering detailed questions about a specific grower or drafting outreach.',
+    input_schema: {
+      type: 'object',
+      properties: { lead_id: { type: 'string' }, search: { type: 'string', description: 'business/owner name' } },
+      required: [],
+    },
+  },
+  {
+    name: 'draft_outreach',
+    description:
+      'Draft (do NOT send) a personalized first-touch email or SMS for a lead, grounded in their crop, acreage and EFB risk. Identify the lead by lead_id, name search, or on-screen focus. Returns the draft for the user to review/copy.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        lead_id: { type: 'string' },
+        search: { type: 'string' },
+        channel: { type: 'string', enum: ['email', 'sms'], description: 'default email' },
+      },
+      required: [],
+    },
   },
   // ── Actions (staff only) ─────────────────────────────────────────────────
   {
@@ -456,6 +496,100 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       for (const d of (data ?? []) as any[]) (byFolder[d.folder] ||= []).push(d.title)
       const folders = Object.entries(byFolder).map(([folder, titles]) => ({ folder, documents: titles }))
       return { folders, total: data?.length ?? 0 }
+    }
+    case 'add_to_knowledge': {
+      if (!ctx.isStaff) return staffOnly
+      const title = String(args.title ?? '').trim()
+      const content = String(args.content ?? '').trim()
+      const folder = String(args.folder ?? 'General').trim() || 'General'
+      if (!title || !content) return { error: 'Need both a title and content to save.' }
+      // Idempotent upsert on (folder, lower(title)).
+      const { data: existing } = await supabase
+        .from('knowledge_documents')
+        .select('id')
+        .eq('folder', folder)
+        .ilike('title', title)
+        .limit(1)
+      const row = { title, folder, content, source: 'note', byte_size: content.length, updated_at: new Date().toISOString() }
+      if (existing?.[0]) {
+        const { error } = await supabase.from('knowledge_documents').update(row).eq('id', existing[0].id)
+        if (error) return { error: error.message }
+        return { ok: true, updated: true, title, folder }
+      }
+      const { error } = await supabase.from('knowledge_documents').insert(row)
+      if (error) return { error: error.message }
+      return { ok: true, created: true, title, folder }
+    }
+
+    // ── deeper read + drafting ──────────────────────────────────────────────
+    case 'get_lead_detail': {
+      const r = await resolveLead(supabase, args, ctx)
+      if (r.error) return r
+      const l = r.lead
+      return {
+        lead: {
+          id: l.id,
+          business_name: l.business_name,
+          owner_name: l.owner_name ?? l.contact_name,
+          phone: l.phone,
+          email: l.email,
+          city: l.city,
+          county: l.county,
+          vertical: l.vertical,
+          primary_crop: l.primary_crop,
+          est_acreage: l.est_acreage,
+          priority_tier: l.priority_tier,
+          priority_score: l.priority_score,
+          action_recommendation: l.action_recommendation,
+          loi_status: l.loi_status,
+          composite_efb_risk: l.composite_efb_risk,
+          tags: l.tags ?? [],
+          recommended_approach: l.recommended_approach,
+          research_summary: l.research_summary,
+          enrichment_status: l.enrichment_status,
+        },
+      }
+    }
+    case 'draft_outreach': {
+      const r = await resolveLead(supabase, args, ctx)
+      if (r.error) return r
+      const l = r.lead
+      const channel: 'email' | 'sms' = args.channel === 'sms' ? 'sms' : 'email'
+      const { aiConfigured, cheapComplete } = await import('@/lib/ai/llm')
+      if (!aiConfigured()) return { error: 'No AI provider configured for drafting.' }
+      const { COMPANY_CONTEXT } = await import('@/lib/enrichment/config')
+      const { OUTREACH_SIGNOFF } = await import('@/lib/business')
+      const facts = (
+        [
+          ['Business', l.business_name],
+          ['Owner/contact', l.contact_name ?? l.owner_name],
+          ['City', l.city],
+          ['County', l.county],
+          ['Crop', l.primary_crop],
+          ['Est. acreage', l.est_acreage],
+          ['EFB risk (0-100)', l.composite_efb_risk],
+          ['Recommended approach', l.recommended_approach],
+          ['Research notes', l.research_summary],
+        ] as [string, unknown][]
+      )
+        .filter(([, v]) => v != null && v !== '')
+        .map(([k, v]) => `${k}: ${v}`)
+        .join('\n')
+      const channelRule =
+        channel === 'sms'
+          ? 'Write a concise SMS under ~320 characters — friendly, direct, with a clear ask to reply or schedule a quick look.'
+          : `Write a short outreach email. First line is the subject, prefixed exactly "Subject:". Then 3-5 short sentences, warm and professional, with one clear call to action. Sign off as "${OUTREACH_SIGNOFF}" — keep any bracketed placeholder verbatim.`
+      try {
+        const draft = await cheapComplete({
+          system: `You write first-touch outreach for a drone-spraying ag-services business. ${COMPANY_CONTEXT}\nGoal: earn a reply that leads to a spray/scouting job or a short call. Be specific to this lead's crop and situation. Never fabricate prices, guarantees, or facts not provided. ${channelRule}`,
+          user: `Draft a ${channel} to this lead:\n${facts}`,
+          maxTokens: 500,
+          temperature: 0.6,
+        })
+        return { ok: true, channel, lead: l.business_name ?? l.owner_name, draft }
+      } catch (err: any) {
+        return { error: String(err?.message ?? err) }
+      }
     }
 
     // ── navigation (optionally with leads filters) ──────────────────────────

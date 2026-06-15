@@ -54,6 +54,7 @@ export default function Sidekick() {
   const [lastUndo, setLastUndo] = useState<any>(null)
   const [nudge, setNudge] = useState<string | null>(null)
   const [badge, setBadge] = useState(0)
+  const [pendingAsk, setPendingAsk] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -97,6 +98,30 @@ export default function Sidekick() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // Other parts of the app can ask Sidekick something:
+  //   window.dispatchEvent(new CustomEvent('sidekick:ask', { detail: { query } }))
+  useEffect(() => {
+    const onAsk = (e: Event) => {
+      const q = (e as CustomEvent).detail?.query
+      if (typeof q === 'string' && q.trim()) {
+        setOpen(true)
+        setPendingAsk(q.trim())
+      }
+    }
+    window.addEventListener('sidekick:ask', onAsk as EventListener)
+    return () => window.removeEventListener('sidekick:ask', onAsk as EventListener)
+  }, [])
+
+  // Fire a queued ask once the panel is open and idle (avoids stale closures).
+  useEffect(() => {
+    if (pendingAsk && open && !sending) {
+      const q = pendingAsk
+      setPendingAsk(null)
+      void send(q)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAsk, open, sending])
 
   if (pathname.startsWith('/login') || pathname.startsWith('/auth')) return null
 
