@@ -57,6 +57,7 @@ const PAGES: Record<string, string> = {
 }
 
 const LOI_STAGES = ['not_contacted', 'contacted', 'meeting_scheduled', 'loi_sent', 'loi_signed', 'declined']
+const JOB_STATUSES = ['quoted', 'scheduled', 'in_progress', 'completed', 'invoiced', 'paid', 'cancelled']
 
 const cap = (n: unknown, def: number, max: number) => {
   const v = typeof n === 'number' ? n : def
@@ -150,6 +151,12 @@ export const TOOLS = [
       },
       required: [],
     },
+  },
+  {
+    name: 'get_finance_summary',
+    description:
+      'Get a money overview across all jobs: total quoted, invoiced, collected (paid), and outstanding (invoiced minus paid), plus job counts and dollar amounts by status, and open pipeline value (quoted + scheduled). Use for "how much have we collected / what\'s outstanding / revenue / unpaid invoices" questions.',
+    input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'query_fields',
@@ -307,6 +314,36 @@ export const TOOLS = [
       required: ['operation'],
     },
   },
+  {
+    name: 'update_job_status',
+    description:
+      'Set a job\'s status (quoted/scheduled/in_progress/completed/invoiced/paid/cancelled). Identify the job by job_id or by a job-title/customer name search. Marking it "paid" records full payment; "completed" stamps the completion date. Staff only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string' },
+        search: { type: 'string', description: 'job title or customer name' },
+        status: { type: 'string', enum: JOB_STATUSES },
+      },
+      required: ['status'],
+    },
+  },
+  {
+    name: 'create_job',
+    description:
+      'Create a new job for a customer (or lead). Provide a job_title and identify the customer by customer_search or the lead by lead_search. Optionally set scheduled_date (YYYY-MM-DD) and quote_amount. Staff only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_title: { type: 'string' },
+        customer_search: { type: 'string', description: 'customer business/contact name' },
+        lead_search: { type: 'string', description: 'lead business/owner name (if no customer yet)' },
+        scheduled_date: { type: 'string', description: 'YYYY-MM-DD' },
+        quote_amount: { type: 'number' },
+      },
+      required: ['job_title'],
+    },
+  },
   // ── Multi-step bulk actions (staff only, capped at 100) ──────────────────
   {
     name: 'bulk_tag_leads',
@@ -387,6 +424,28 @@ async function resolveLead(supabase: any, args: Args, ctx: ToolContext) {
   return { error: 'No lead specified — open a lead or give me a name.' }
 }
 
+/** Resolve a single job by id or by a job-title / customer-name search. */
+async function resolveJob(supabase: any, args: Args) {
+  if (args.job_id) {
+    const { data } = await supabase.from('jobs').select('*').eq('id', args.job_id).limit(1)
+    if (data?.[0]) return { job: data[0] }
+    return { error: `No job with id ${args.job_id}.` }
+  }
+  if (args.search) {
+    const { data } = await supabase
+      .from('jobs')
+      .select('*')
+      .or(`job_title.ilike.%${args.search}%,city.ilike.%${args.search}%`)
+      .order('created_at', { ascending: false })
+      .limit(5)
+    if (!data?.length) return { error: `No job matches "${args.search}".` }
+    if (data.length > 1)
+      return { error: `"${args.search}" matched ${data.length} jobs (e.g. ${data.slice(0, 3).map((j: any) => j.job_title).join(', ')}). Be more specific.` }
+    return { job: data[0] }
+  }
+  return { error: 'Which job? Give me a job title or customer name.' }
+}
+
 /** Idempotency cooldown: true if a run row for `table` started within `secs`. */
 async function ranRecently(supabase: any, table: string, secs: number): Promise<boolean> {
   const since = new Date(Date.now() - secs * 1000).toISOString()
@@ -436,6 +495,33 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       if (args.status) q = q.eq('status', args.status)
       const { data, error } = await q
       return error ? { error: error.message } : data
+    }
+    case 'get_finance_summary': {
+      const { data, error } = await supabase.from('jobs').select('status, quote_amount, invoice_amount, paid_amount').limit(2000)
+      if (error) return { error: error.message }
+      const rows = (data ?? []) as any[]
+      const num = (v: any) => (typeof v === 'number' ? v : Number(v) || 0)
+      let quoted = 0, invoiced = 0, collected = 0, pipeline = 0
+      const byStatus: Record<string, { count: number; amount: number }> = {}
+      for (const r of rows) {
+        quoted += num(r.quote_amount)
+        invoiced += num(r.invoice_amount)
+        collected += num(r.paid_amount)
+        if (r.status === 'quoted' || r.status === 'scheduled') pipeline += num(r.quote_amount)
+        const s = r.status ?? 'unknown'
+        byStatus[s] ||= { count: 0, amount: 0 }
+        byStatus[s].count++
+        byStatus[s].amount += num(r.invoice_amount) || num(r.quote_amount)
+      }
+      return {
+        jobs: rows.length,
+        total_quoted: Math.round(quoted),
+        total_invoiced: Math.round(invoiced),
+        collected: Math.round(collected),
+        outstanding: Math.round(invoiced - collected),
+        open_pipeline_value: Math.round(pipeline),
+        by_status: byStatus,
+      }
     }
     case 'query_fields': {
       let q = supabase.from('fields').select(FIELD_COLS).limit(cap(args.limit, 25, 100))
@@ -717,6 +803,71 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       }
     }
 
+    // ── job actions (staff only) ────────────────────────────────────────────
+    case 'update_job_status': {
+      if (!ctx.isStaff) return staffOnly
+      if (!JOB_STATUSES.includes(args.status)) return { error: 'Invalid status.' }
+      const r = await resolveJob(supabase, args)
+      if (r.error) return r
+      const j = r.job
+      const label = j.job_title ?? 'job'
+      // Idempotent: already at the target status → no write.
+      if (j.status === args.status) {
+        return { ok: true, noop: true, job: label, status: args.status, message: `${label} is already ${args.status}.` }
+      }
+      const patch: any = { status: args.status }
+      if (args.status === 'completed' && !j.completed_date) patch.completed_date = new Date().toISOString().slice(0, 10)
+      if (args.status === 'paid') patch.paid_amount = j.invoice_amount ?? j.paid_amount ?? j.quote_amount ?? null
+      const { error } = await supabase.from('jobs').update(patch).eq('id', j.id)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      ctx.undo = {
+        label: `${label}'s status (back to ${j.status})`,
+        tool: '_revert_job',
+        args: { id: j.id, patch: { status: j.status, completed_date: j.completed_date ?? null, paid_amount: j.paid_amount ?? null } },
+      }
+      return { ok: true, job: label, status: args.status }
+    }
+    case 'create_job': {
+      if (!ctx.isStaff) return staffOnly
+      const job_title = String(args.job_title ?? '').trim()
+      if (!job_title) return { error: 'A job title is required.' }
+      const row: any = { job_title, status: 'quoted' }
+      if (args.scheduled_date && /^\d{4}-\d{2}-\d{2}$/.test(String(args.scheduled_date))) {
+        row.scheduled_date = args.scheduled_date
+        row.status = 'scheduled'
+      }
+      if (typeof args.quote_amount === 'number') row.quote_amount = args.quote_amount
+      // Link to a customer (preferred) or a lead.
+      if (args.customer_search) {
+        const { data } = await supabase
+          .from('customers')
+          .select('id, business_name, city, county, primary_crop')
+          .or(`business_name.ilike.%${args.customer_search}%,contact_name.ilike.%${args.customer_search}%`)
+          .limit(2)
+        if (!data?.length) return { error: `No customer matches "${args.customer_search}".` }
+        if (data.length > 1) return { error: `"${args.customer_search}" matched multiple customers — be more specific.` }
+        row.customer_id = data[0].id
+        row.city = data[0].city
+        row.county = data[0].county
+        row.vertical = 'ag_spray'
+      } else if (args.lead_search) {
+        const lr = await resolveLead(supabase, { search: args.lead_search }, ctx)
+        if (lr.error) return lr
+        row.lead_id = lr.lead.id
+        row.city = lr.lead.city
+        row.county = lr.lead.county
+        row.vertical = lr.lead.vertical ?? 'ag_spray'
+      } else {
+        return { error: 'Who is this job for? Give me a customer or lead name.' }
+      }
+      const { data: ins, error } = await supabase.from('jobs').insert(row).select('id').single()
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      if (ins?.id) ctx.undo = { label: `job "${job_title}"`, tool: '_delete_job', args: { id: ins.id } }
+      return { ok: true, job_id: ins?.id, job: job_title, status: row.status }
+    }
+
     // ── multi-step bulk actions ─────────────────────────────────────────────
     case 'bulk_tag_leads': {
       if (!ctx.isStaff) return staffOnly
@@ -789,6 +940,22 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
         const next = (row.tags ?? []).filter((t: string) => !tags.includes(t))
         await supabase.from('leads').update({ tags: next }).eq('id', row.id)
       }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true }
+    }
+    case '_revert_job': {
+      if (!ctx.isStaff) return staffOnly
+      if (!args.id || !args.patch) return { error: 'bad undo args' }
+      const { error } = await supabase.from('jobs').update(args.patch).eq('id', args.id)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true }
+    }
+    case '_delete_job': {
+      if (!ctx.isStaff) return staffOnly
+      if (!args.id) return { error: 'bad undo args' }
+      const { error } = await supabase.from('jobs').delete().eq('id', args.id)
+      if (error) return { error: error.message }
       ctx.actions.push({ type: 'refresh' })
       return { ok: true }
     }
