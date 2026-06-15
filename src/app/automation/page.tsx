@@ -7,6 +7,7 @@ import {
   type EnrichmentRun,
   type PriorityTier,
 } from '@/lib/supabase'
+import type { DupCluster } from '@/lib/enrichment/dedupe'
 import EfbAutomationPanel from '@/components/intel/EfbAutomationPanel'
 
 interface Capabilities {
@@ -17,6 +18,31 @@ interface Capabilities {
   staleDays: number
   batchSize: number
   concurrency: number
+  retries?: number
+}
+
+const TREND_META: Record<string, { icon: string; cls: string }> = {
+  up: { icon: '▲', cls: 'text-green-600' },
+  down: { icon: '▼', cls: 'text-red-500' },
+  flat: { icon: '▬', cls: 'text-slate-400' },
+  new: { icon: '✦', cls: 'text-brand-500' },
+}
+
+function TrendBadge({ trend, delta }: { trend?: string | null; delta?: number | null }) {
+  if (!trend) return null
+  const m = TREND_META[trend] ?? TREND_META.flat
+  const label =
+    trend === 'new'
+      ? 'new'
+      : delta != null && delta !== 0
+      ? `${delta > 0 ? '+' : ''}${delta}`
+      : ''
+  return (
+    <span className={`text-xs font-medium tabular-nums ${m.cls}`} title={`Priority ${trend}`}>
+      {m.icon}
+      {label && <span className="ml-0.5">{label}</span>}
+    </span>
+  )
 }
 
 const TIER_META: Record<PriorityTier, { label: string; cls: string; bar: string }> = {
@@ -44,11 +70,56 @@ export default function AutomationPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [tagBusy, setTagBusy] = useState<'preview' | 'apply' | null>(null)
   const [tagResult, setTagResult] = useState<any>(null)
+  const [dupes, setDupes] = useState<DupCluster[]>([])
+  const [dupBusy, setDupBusy] = useState<string | null>(null)
+  const [dupMsg, setDupMsg] = useState<string | null>(null)
 
   const loadLeads = useCallback(async () => {
     const { data } = await supabase.from('leads').select('*')
     setLeads((data ?? []) as Lead[])
   }, [])
+
+  const loadDupes = useCallback(async () => {
+    try {
+      const res = await fetch('/api/leads/dedupe', { cache: 'no-store' })
+      const json = await res.json()
+      setDupes(json.ok ? (json.clusters ?? []) : [])
+    } catch {
+      /* dedupe is best-effort */
+    }
+  }, [])
+
+  async function mergeCluster(cluster: DupCluster) {
+    // Keep the member with the strongest score as the survivor.
+    const sorted = [...cluster.members].sort(
+      (a, b) => (b.priority_score ?? -1) - (a.priority_score ?? -1)
+    )
+    const primary = sorted[0]
+    const mergeIds = sorted.slice(1).map(m => m.id)
+    setDupBusy(primary.id)
+    setDupMsg(null)
+    try {
+      const res = await fetch('/api/leads/dedupe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ primaryId: primary.id, mergeIds }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.ok === false) {
+        setDupMsg(`Merge failed: ${json.error ?? res.statusText}`)
+      } else {
+        setDupMsg(
+          `Merged ${json.markedDuplicate} duplicate(s) into ${primary.business_name ?? primary.owner_name ?? 'lead'}` +
+            (json.backfilled?.length ? ` · backfilled ${json.backfilled.join(', ')}` : '')
+        )
+        await Promise.all([loadLeads(), loadDupes()])
+      }
+    } catch (err: any) {
+      setDupMsg(`Merge failed: ${String(err?.message ?? err)}`)
+    } finally {
+      setDupBusy(null)
+    }
+  }
 
   async function runTagging(dryRun: boolean) {
     setTagBusy(dryRun ? 'preview' : 'apply')
@@ -95,9 +166,13 @@ export default function AutomationPage() {
   }, [])
 
   useEffect(() => {
-    Promise.all([loadLeads(), loadRuns(), loadStatus(), loadNextActions()]).then(
-      () => setLoading(false)
-    )
+    Promise.all([
+      loadLeads(),
+      loadRuns(),
+      loadStatus(),
+      loadNextActions(),
+      loadDupes(),
+    ]).then(() => setLoading(false))
 
     // Best-effort realtime so the board updates as the engine writes back.
     let channel: ReturnType<typeof supabase.channel> | null = null
@@ -117,7 +192,7 @@ export default function AutomationPage() {
     return () => {
       if (channel) supabase.removeChannel(channel)
     }
-  }, [loadLeads, loadRuns, loadStatus, loadNextActions])
+  }, [loadLeads, loadRuns, loadStatus, loadNextActions, loadDupes])
 
   async function runNow() {
     setRunning(true)
@@ -135,7 +210,7 @@ export default function AutomationPage() {
             `${json.aiCalls} AI call(s) · ${(json.durationMs / 1000).toFixed(1)}s`
         )
       }
-      await Promise.all([loadLeads(), loadRuns(), loadNextActions()])
+      await Promise.all([loadLeads(), loadRuns(), loadNextActions(), loadDupes()])
     } catch (err: any) {
       setMessage(`Run failed: ${String(err?.message ?? err)}`)
     } finally {
@@ -167,7 +242,7 @@ export default function AutomationPage() {
             Lead Intelligence Automation
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            Algorithmic prioritization + AI web research, kept in sync automatically
+            Algorithmic prioritization + AI analysis, momentum &amp; auto-sync
           </p>
         </div>
         <button
@@ -306,8 +381,14 @@ export default function AutomationPage() {
                       <span className="text-slate-400"> — {lead.recommended_approach}</span>
                     )}
                   </div>
+                  {lead.next_best_action && (
+                    <div className="text-xs text-brand-600 truncate mt-0.5">
+                      → {lead.next_best_action}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  <TrendBadge trend={lead.priority_trend} delta={lead.priority_delta} />
                   {lead.priority_tier && (
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
@@ -326,6 +407,57 @@ export default function AutomationPage() {
           </div>
         )}
       </div>
+
+      {/* Priority Movers — momentum since the last scoring run */}
+      {stats.movers.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+            <h2 className="text-sm font-semibold text-slate-700">Priority Movers</h2>
+            {stats.risenP1 > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-50 text-red-700 border border-red-200">
+                📈 {stats.risenP1} risen into P1
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 mb-4">
+            Biggest score changes vs. the previous run — what got hotter or cooled off
+          </p>
+          <div className="space-y-2">
+            {stats.movers.map(lead => (
+              <div
+                key={lead.id}
+                className="flex items-center justify-between gap-3 py-2 border-b border-slate-50 last:border-0"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-slate-800 truncate">
+                    {lead.business_name ?? lead.owner_name ?? 'Unknown'}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {[lead.city, lead.primary_crop].filter(Boolean).join(' · ') || '—'}
+                    {lead.priority_score_prev != null && (
+                      <span className="text-slate-400">
+                        {' '}· {lead.priority_score_prev} → {lead.priority_score}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <TrendBadge trend={lead.priority_trend} delta={lead.priority_delta} />
+                  {lead.priority_tier && (
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+                        TIER_META[lead.priority_tier as PriorityTier]?.cls ?? ''
+                      }`}
+                    >
+                      {lead.priority_tier}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Next best actions — from the Supabase intelligence view */}
       {nextActions.length > 0 && (
@@ -362,6 +494,11 @@ export default function AutomationPage() {
                     {l.recommended_approach}
                   </p>
                 )}
+                {l.next_best_action && (
+                  <p className="text-xs text-brand-600 mt-1 line-clamp-1">
+                    → {l.next_best_action}
+                  </p>
+                )}
                 {l.best_contact_method && (
                   <p className="text-xs text-slate-400 mt-1 line-clamp-1">
                     📞 {l.best_contact_method}
@@ -372,6 +509,72 @@ export default function AutomationPage() {
           </div>
         </div>
       )}
+
+      {/* Duplicate leads — detection + non-destructive assisted merge */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
+          <h2 className="text-sm font-semibold text-slate-700">Duplicate Leads</h2>
+          <span className="text-xs text-slate-400">
+            {dupes.length} cluster(s) ·{' '}
+            {dupes.reduce((n, c) => n + (c.members.length - 1), 0)} duplicate(s)
+          </span>
+        </div>
+        <p className="text-xs text-slate-400 mb-4">
+          Matched on phone / email / name + city. Merge backfills the strongest record and
+          tags the rest <span className="font-medium">duplicate</span> — it never deletes.
+        </p>
+
+        {dupMsg && (
+          <div className="text-xs rounded-lg border border-brand-200 bg-brand-50 text-brand-800 px-3 py-2 mb-3">
+            {dupMsg}
+          </div>
+        )}
+
+        {dupes.length === 0 ? (
+          <p className="text-sm text-slate-400">No duplicates detected. 🎉</p>
+        ) : (
+          <div className="space-y-3">
+            {dupes.slice(0, 6).map((cluster, i) => (
+              <div key={i} className="border border-slate-100 rounded-lg p-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="flex flex-wrap gap-1">
+                    {cluster.reasons.map(r => (
+                      <span
+                        key={r}
+                        className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100"
+                      >
+                        {r}
+                      </span>
+                    ))}
+                  </span>
+                  <button
+                    onClick={() => mergeCluster(cluster)}
+                    disabled={dupBusy !== null}
+                    className="tap text-xs border border-slate-200 hover:border-slate-400 text-slate-700 rounded-lg px-3 py-1 font-medium transition-colors disabled:opacity-60"
+                  >
+                    {dupBusy ? 'Merging…' : 'Merge'}
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {cluster.members.map(m => (
+                    <div key={m.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-700 truncate">
+                        {m.business_name ?? m.owner_name ?? 'Unknown'}
+                        <span className="text-slate-400">
+                          {' '}· {[m.city, m.phone, m.email].filter(Boolean).join(' · ') || '—'}
+                        </span>
+                      </span>
+                      <span className="text-slate-400 shrink-0 tabular-nums">
+                        {m.priority_score ?? '—'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* AI lead tagging (Groq/OpenRouter/Claude) */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
@@ -452,6 +655,7 @@ export default function AutomationPage() {
                   <th className="pb-2 font-medium text-right">Processed</th>
                   <th className="pb-2 font-medium text-right">Updated</th>
                   <th className="pb-2 font-medium text-right">AI calls</th>
+                  <th className="pb-2 font-medium text-right">Tokens</th>
                   <th className="pb-2 font-medium text-right">Duration</th>
                 </tr>
               </thead>
@@ -483,6 +687,11 @@ export default function AutomationPage() {
                     <td className="py-2 text-right text-slate-600">{run.leads_processed}</td>
                     <td className="py-2 text-right text-slate-600">{run.leads_enriched}</td>
                     <td className="py-2 text-right text-slate-600">{run.ai_calls}</td>
+                    <td className="py-2 text-right text-slate-500">
+                      {run.ai_tokens != null && run.ai_tokens > 0
+                        ? run.ai_tokens.toLocaleString()
+                        : '—'}
+                    </td>
                     <td className="py-2 text-right text-slate-500">
                       {run.duration_ms != null
                         ? `${(run.duration_ms / 1000).toFixed(1)}s`
@@ -541,6 +750,15 @@ function deriveStats(leads: Lead[]) {
     .sort((a, b) => (b.priority_score ?? 0) - (a.priority_score ?? 0))
     .slice(0, 8)
 
+  // Priority momentum — biggest movers (gainers + decliners) since last run.
+  const movers = leads
+    .filter(l => l.priority_delta != null && l.priority_delta !== 0)
+    .sort((a, b) => Math.abs(b.priority_delta ?? 0) - Math.abs(a.priority_delta ?? 0))
+    .slice(0, 6)
+  const risenP1 = leads.filter(
+    l => l.priority_tier === 'P1' && (l.priority_trend === 'up' || l.priority_trend === 'new')
+  ).length
+
   return {
     total,
     scored: scoredLeads.length,
@@ -551,6 +769,8 @@ function deriveStats(leads: Lead[]) {
     avgConfidence,
     needsWork,
     top,
+    movers,
+    risenP1,
   }
 }
 
@@ -563,9 +783,9 @@ function EngineHealth({ caps }: { caps: Capabilities | null }) {
   if (!caps) return null
   const items: { label: string; ok: boolean; detail: string }[] = [
     {
-      label: 'AI Research',
+      label: 'AI Analysis',
       ok: caps.aiEnabled,
-      detail: caps.aiEnabled ? caps.modelVersion : 'set ANTHROPIC_API_KEY',
+      detail: caps.aiEnabled ? caps.modelVersion : 'set a Groq / OpenRouter / Anthropic key',
     },
     {
       label: 'Database Writes',
@@ -580,7 +800,7 @@ function EngineHealth({ caps }: { caps: Capabilities | null }) {
     {
       label: 'Schedule',
       ok: true,
-      detail: `daily · batch ${caps.batchSize}`,
+      detail: `daily · batch ${caps.batchSize}${caps.retries != null ? ` · ${caps.retries} retries` : ''}`,
     },
   ]
   return (

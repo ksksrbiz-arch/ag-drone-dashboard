@@ -72,7 +72,21 @@ export function aiConfigured(): boolean {
   return resolveProvider() !== null
 }
 
-export async function cheapComplete(opts: ChatOpts): Promise<string> {
+/** Text + metadata (token usage, provider, model) from one completion. */
+export interface CompletionResult {
+  text: string
+  tokens: number
+  provider: string
+  model: string
+}
+
+/**
+ * Like {@link cheapComplete} but also reports token usage and which
+ * provider/model served the call — used by the enrichment engine for per-run
+ * cost accounting. Token counts are best-effort (providers that omit `usage`
+ * report 0).
+ */
+export async function cheapCompleteDetailed(opts: ChatOpts): Promise<CompletionResult> {
   const p = resolveProvider()
   if (!p) {
     throw new Error('No AI provider configured (set GROQ_API_KEY, OPENROUTER_API_KEY, or ANTHROPIC_API_KEY).')
@@ -80,7 +94,11 @@ export async function cheapComplete(opts: ChatOpts): Promise<string> {
   return p.kind === 'anthropic' ? anthropicComplete(p, opts) : openaiComplete(p, opts)
 }
 
-async function openaiComplete(p: Resolved, opts: ChatOpts): Promise<string> {
+export async function cheapComplete(opts: ChatOpts): Promise<string> {
+  return (await cheapCompleteDetailed(opts)).text
+}
+
+async function openaiComplete(p: Resolved, opts: ChatOpts): Promise<CompletionResult> {
   const res = await fetch(p.url, {
     method: 'POST',
     headers: {
@@ -104,10 +122,15 @@ async function openaiComplete(p: Resolved, opts: ChatOpts): Promise<string> {
     throw new Error(`${p.label} ${res.status}: ${body.slice(0, 300)}`)
   }
   const json = await res.json()
-  return String(json?.choices?.[0]?.message?.content ?? '').trim()
+  return {
+    text: String(json?.choices?.[0]?.message?.content ?? '').trim(),
+    tokens: Number(json?.usage?.total_tokens ?? 0) || 0,
+    provider: p.label,
+    model: p.model,
+  }
 }
 
-async function anthropicComplete(p: Resolved, opts: ChatOpts): Promise<string> {
+async function anthropicComplete(p: Resolved, opts: ChatOpts): Promise<CompletionResult> {
   const Anthropic = (await import('@anthropic-ai/sdk')).default
   const client = new Anthropic({ apiKey: p.key })
   const resp: any = await (client.messages.create as any)({
@@ -116,11 +139,18 @@ async function anthropicComplete(p: Resolved, opts: ChatOpts): Promise<string> {
     system: opts.system,
     messages: [{ role: 'user', content: opts.user }],
   })
-  return (resp?.content ?? [])
+  const text = (resp?.content ?? [])
     .filter((b: any) => b.type === 'text')
     .map((b: any) => b.text)
     .join('\n')
     .trim()
+  const usage = resp?.usage ?? {}
+  return {
+    text,
+    tokens: (Number(usage.input_tokens ?? 0) || 0) + (Number(usage.output_tokens ?? 0) || 0),
+    provider: p.label,
+    model: p.model,
+  }
 }
 
 /** Lenient JSON extraction — pulls the first {...} object out of a model reply. */

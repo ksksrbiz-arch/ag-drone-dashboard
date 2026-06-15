@@ -29,6 +29,8 @@ export type JobStatus =
   | 'cancelled'
 export type ActionRec = 'TREAT_NOW' | 'SCOUT_NOW' | 'CONTACT_NOW' | 'MONITOR'
 export type PriorityTier = 'P1' | 'P2' | 'P3' | 'P4'
+/** Direction of a lead's priority score vs. the previous run. */
+export type PriorityTrend = 'up' | 'down' | 'flat' | 'new'
 export type EnrichmentStatus =
   | 'pending'
   | 'researching'
@@ -42,6 +44,7 @@ export interface PriorityFactor {
   weight: number
   value: number // 0..1 normalized
   contribution: number // weight * value * 100
+  detail?: string // human-readable source value, e.g. "Mar · EFB window"
 }
 
 export interface Lead {
@@ -106,6 +109,14 @@ export interface Lead {
   recommended_approach?: string | null
   best_contact_method?: string | null
   enrichment_sources?: Record<string, unknown> | null
+  // ─── v3: priority momentum + richer advisory ─────────────────────────────
+  priority_score_prev?: number | null
+  priority_delta?: number | null
+  priority_trend?: PriorityTrend | null
+  priority_explanation?: string | null
+  next_best_action?: string | null
+  talking_points?: string[] | null
+  last_scored_at?: string | null
 }
 
 export interface EnrichmentRun {
@@ -118,6 +129,7 @@ export interface EnrichmentRun {
   leads_enriched: number
   leads_failed: number
   ai_calls: number
+  ai_tokens: number | null
   ai_enabled: boolean | null
   model_version: string | null
   duration_ms: number | null

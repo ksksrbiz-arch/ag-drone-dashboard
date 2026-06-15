@@ -7,7 +7,7 @@ import type { EngineCapabilities } from './types'
 // models (Groq / OpenRouter) via src/lib/ai/llm.ts — no web search, no
 // Anthropic credits required. ENRICHMENT_MODEL is kept for display/compat.
 export const MODEL = process.env.ENRICHMENT_MODEL || 'free (groq/openrouter)'
-export const MODEL_VERSION = 'lead-intel-v2-ssot'
+export const MODEL_VERSION = 'lead-intel-v3'
 
 export const EFFORT = (process.env.ENRICHMENT_EFFORT || 'medium') as
   | 'low'
@@ -17,6 +17,8 @@ export const EFFORT = (process.env.ENRICHMENT_EFFORT || 'medium') as
 export const BATCH_SIZE = intEnv('ENRICHMENT_BATCH_SIZE', 6, 1, 50)
 export const CONCURRENCY = intEnv('ENRICHMENT_CONCURRENCY', 3, 1, 8)
 export const STALE_DAYS = intEnv('ENRICHMENT_STALE_DAYS', 7, 1, 365)
+// Per-lead retry attempts on a transient research/write failure (v3).
+export const RETRIES = intEnv('ENRICHMENT_RETRIES', 2, 0, 5)
 
 // Enrichment runs whenever ANY chat provider is configured — the free Groq /
 // OpenRouter models are preferred (see src/lib/ai/llm.ts), Anthropic optional.
@@ -44,6 +46,7 @@ export function capabilities(): EngineCapabilities {
     staleDays: STALE_DAYS,
     batchSize: BATCH_SIZE,
     concurrency: CONCURRENCY,
+    retries: RETRIES,
   }
 }
 
