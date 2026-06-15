@@ -246,6 +246,12 @@ export default function KnowledgePage() {
                       )}
                     </div>
                     {d.preview && <p className="text-xs text-slate-500 mt-2 line-clamp-3 whitespace-pre-wrap">{d.preview}</p>}
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('sidekick:ask', { detail: { query: `From the "${d.title}" doc, give me the key points.` } }))}
+                      className="mt-2.5 inline-flex items-center gap-1 text-[11px] text-brand-600 hover:text-brand-700 font-medium"
+                    >
+                      ✨ Ask Sidekick about this
+                    </button>
                   </div>
                 ))}
               </div>
