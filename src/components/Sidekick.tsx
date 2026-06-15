@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { getSidekickFocus } from '@/lib/assistant/context'
+import { streamAssistant, speechSupported, type ChatAttachment } from '@/lib/assistant/streamClient'
+import { extractText, isSupportedFile, ATTACH_EXT } from '@/lib/files/extractText'
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -21,16 +23,16 @@ const DEFAULT_SUGGESTIONS = [
   'Any new alerts?',
 ]
 const PAGE_SUGGESTIONS: Record<string, string[]> = {
-  '/leads': ['Which leads are hottest right now?', 'How many grass-seed leads in Polk County?', 'Tag all stale P1 leads follow-up'],
+  '/leads': ['Which leads are hottest right now?', 'Break down leads by crop', 'Tag all stale P1 leads follow-up'],
   '/pipeline': ['What’s ready to contact?', 'Move all meeting-scheduled hazelnut leads to LOI sent', 'How many LOIs signed?'],
   '/customers': ['Show active customers', 'Who did we convert recently?'],
   '/jobs': ['What jobs are scheduled?', 'How much revenue is unpaid?', 'Show completed jobs'],
-  '/fields': ['How many acres have we mapped?', 'Map field boundaries', 'Largest fields by acreage'],
+  '/fields': ['How many acres by crop have we mapped?', 'Map field boundaries', 'Largest fields by acreage'],
   '/field-ops': ['What needs treatment now?', 'Recompute EFB risk'],
   '/intel': ['Which parcels are TREAT NOW?', 'Recompute EFB risk', 'Open the risk map'],
-  '/finance': ['What’s our unpaid invoice total?', 'Revenue collected this month'],
+  '/finance': ['What’s our outstanding A/R?', 'Revenue collected this month'],
   '/knowledge': ['What reference docs do we have?', 'What’s our per-acre rate?', 'Summarize the EFB treatment protocol'],
-  '/alerts': ['Any new alerts?', 'What needs attention?'],
+  '/alerts': ['Any new alerts?', 'Clear my alerts'],
 }
 function suggestionsFor(pathname: string): string[] {
   for (const [prefix, list] of Object.entries(PAGE_SUGGESTIONS))
@@ -55,7 +57,14 @@ export default function Sidekick() {
   const [nudge, setNudge] = useState<string | null>(null)
   const [badge, setBadge] = useState(0)
   const [pendingAsk, setPendingAsk] = useState<string | null>(null)
+  const [attachment, setAttachment] = useState<ChatAttachment | null>(null)
+  const [listening, setListening] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
   const scrollRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const recogRef = useRef<any>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -132,59 +141,111 @@ export default function Sidekick() {
     if (!navigated && actions.some(a => a.type === 'refresh')) router.refresh()
   }
 
-  async function send(text: string) {
-    const q = text.trim()
-    if (!q || sending) return
+  const appendToken = (t: string) =>
+    setMessages(m => {
+      const copy = [...m]
+      const last = copy[copy.length - 1]
+      if (last?.role === 'assistant') copy[copy.length - 1] = { ...last, content: last.content + t }
+      return copy
+    })
+
+  // Core: stream one assistant turn for a history that ends with a user message.
+  async function runStream(history: Msg[]) {
     setError(null)
     setStatus(null)
-    const next = [...messages, { role: 'user' as const, content: q }]
-    setMessages([...next, { role: 'assistant', content: '' }]) // streaming placeholder
-    setInput('')
-    setSending(true)
     setBadge(0)
-
-    const appendToken = (t: string) =>
-      setMessages(m => {
-        const copy = [...m]
-        const last = copy[copy.length - 1]
-        if (last?.role === 'assistant') copy[copy.length - 1] = { ...last, content: last.content + t }
-        return copy
-      })
-
-    try {
-      const res = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next, context: { path: pathname, focus: getSidekickFocus() }, stream: true }),
-      })
-      if (!res.ok || !res.body) throw new Error(`Request failed (${res.status})`)
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() ?? ''
-        for (const line of lines) {
-          const t = line.trim()
-          if (!t.startsWith('data:')) continue
-          let e: any
-          try { e = JSON.parse(t.slice(5).trim()) } catch { continue }
-          if (e.type === 'token') { setStatus(null); appendToken(e.text) }
-          else if (e.type === 'status') setStatus(e.text)
-          else if (e.type === 'error') setError(e.error)
-          else if (e.type === 'done') { setLastUndo(e.undo ?? null); runActions(e.actions); setStatus(null) }
-        }
+    setMessages([...history, { role: 'assistant', content: '' }]) // streaming placeholder
+    setSending(true)
+    const ac = new AbortController()
+    abortRef.current = ac
+    const sentAttachment = attachment
+    await streamAssistant(
+      {
+        messages: history,
+        context: { path: pathname, focus: getSidekickFocus() },
+        attachment: sentAttachment,
+        signal: ac.signal,
+      },
+      {
+        onToken: t => { setStatus(null); appendToken(t) },
+        onStatus: s => setStatus(s),
+        onError: e => setError(e),
+        onDone: (actions, undo) => { setLastUndo(undo ?? null); runActions(actions); setStatus(null) },
       }
-    } catch (err: any) {
-      setError(String(err?.message ?? err))
-    } finally {
-      setSending(false)
-      setStatus(null)
+    )
+    setSending(false)
+    setStatus(null)
+    abortRef.current = null
+    if (sentAttachment) setAttachment(null) // attachment is consumed by the turn
+  }
+
+  function send(text: string) {
+    const q = text.trim()
+    if (!q || sending) return
+    setInput('')
+    void runStream([...messages, { role: 'user', content: q }])
+  }
+
+  function stop() {
+    abortRef.current?.abort()
+    abortRef.current = null
+    setSending(false)
+    setStatus(null)
+  }
+
+  function regenerate() {
+    if (sending) return
+    const hist = [...messages]
+    while (hist.length && hist[hist.length - 1].role === 'assistant') hist.pop()
+    if (!hist.length) return
+    void runStream(hist)
+  }
+
+  function toggleVoice() {
+    if (!speechSupported()) return
+    if (listening) {
+      recogRef.current?.stop()
+      return
     }
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const r = new SR()
+    r.lang = 'en-US'
+    r.interimResults = true
+    r.continuous = false
+    r.onresult = (e: any) => {
+      let s = ''
+      for (let i = 0; i < e.results.length; i++) s += e.results[i][0].transcript
+      setInput(s)
+    }
+    r.onend = () => setListening(false)
+    r.onerror = () => setListening(false)
+    recogRef.current = r
+    setListening(true)
+    r.start()
+  }
+
+  async function onAttach(files: FileList | null) {
+    const f = files?.[0]
+    if (f) {
+      try {
+        if (!isSupportedFile(f.name)) throw new Error('Use a PDF or text file.')
+        setError(null)
+        setStatus(`Reading ${f.name}…`)
+        const text = await extractText(f)
+        setAttachment({ name: f.name, text })
+        setStatus(null)
+      } catch (e: any) {
+        setError(String(e?.message ?? e))
+        setStatus(null)
+      }
+    }
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {}
   }
 
   async function undoLast() {
@@ -252,16 +313,25 @@ export default function Sidekick() {
                   </div>
                 </div>
               ) : (
-                messages.map((m, i) => (
-                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    {m.content || m.role === 'user' ? (
-                      <div className={`max-w-[88%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'bg-brand-500 text-white rounded-br-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'}`}>
-                        {m.content}
-                        {m.role === 'assistant' && i === messages.length - 1 && sending && <span className="inline-block w-1.5 h-4 ml-0.5 align-middle bg-slate-400 animate-pulse" />}
-                      </div>
-                    ) : null}
-                  </div>
-                ))
+                messages.map((m, i) => {
+                  const isLastAssistant = m.role === 'assistant' && i === messages.length - 1
+                  return (
+                    <div key={i} className={`group flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                      {m.content || m.role === 'user' ? (
+                        <div className={`max-w-[88%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'bg-brand-500 text-white rounded-br-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'}`}>
+                          {m.content}
+                          {isLastAssistant && sending && <span className="inline-block w-1.5 h-4 ml-0.5 align-middle bg-slate-400 animate-pulse" />}
+                        </div>
+                      ) : null}
+                      {m.role === 'assistant' && m.content && !(isLastAssistant && sending) && (
+                        <div className="flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => copy(m.content)} className="text-[11px] text-slate-400 hover:text-slate-700">Copy</button>
+                          {isLastAssistant && <button onClick={regenerate} className="text-[11px] text-slate-400 hover:text-slate-700">Regenerate</button>}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
               )}
               {status && (
                 <div className="flex justify-start"><div className="bg-white border border-slate-200 text-slate-400 rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm italic">{status}</div></div>
@@ -277,9 +347,34 @@ export default function Sidekick() {
               )}
             </div>
 
-            <form onSubmit={e => { e.preventDefault(); send(input) }} className="p-2.5 border-t border-slate-100 flex gap-2">
-              <input value={input} onChange={e => setInput(e.target.value)} placeholder="Ask or tell Sidekick…" className="tap flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500" />
-              <button type="submit" disabled={sending || !input.trim()} className="tap inline-flex items-center justify-center text-sm bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg px-4 transition-colors disabled:opacity-60">Send</button>
+            {attachment && (
+              <div className="px-2.5 pt-2 -mb-1">
+                <span className="inline-flex items-center gap-1.5 text-xs bg-brand-50 border border-brand-200 text-brand-700 rounded-full px-2.5 py-1 max-w-full">
+                  <span>📎</span>
+                  <span className="truncate">{attachment.name}</span>
+                  <button onClick={() => setAttachment(null)} aria-label="Remove attachment" className="text-brand-400 hover:text-brand-700">×</button>
+                </span>
+              </div>
+            )}
+
+            <form onSubmit={e => { e.preventDefault(); send(input) }} className="p-2.5 border-t border-slate-100 flex items-center gap-1.5">
+              <input ref={fileRef} type="file" accept={['.pdf', ...ATTACH_EXT.filter(e => e !== 'pdf').map(e => '.' + e)].join(',')} onChange={e => onAttach(e.target.files)} className="hidden" />
+              <button type="button" onClick={() => fileRef.current?.click()} aria-label="Attach a file" title="Attach a file for context" className="tap-sq text-slate-400 hover:text-slate-700 shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+              {mounted && speechSupported() && (
+                <button type="button" onClick={toggleVoice} aria-label="Voice input" title="Voice input" className={`tap-sq shrink-0 ${listening ? 'text-red-500 animate-pulse' : 'text-slate-400 hover:text-slate-700'}`}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+              )}
+              <input value={input} onChange={e => setInput(e.target.value)} placeholder={listening ? 'Listening…' : 'Ask or tell Sidekick…'} className="tap flex-1 min-w-0 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              {sending ? (
+                <button type="button" onClick={stop} className="tap inline-flex items-center justify-center text-sm bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium rounded-lg px-3 py-2 transition-colors shrink-0" title="Stop">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                </button>
+              ) : (
+                <button type="submit" disabled={!input.trim()} className="tap inline-flex items-center justify-center text-sm bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg px-4 py-2 transition-colors disabled:opacity-60 shrink-0">Send</button>
+              )}
             </form>
           </div>
         </div>
