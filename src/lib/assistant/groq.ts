@@ -1,20 +1,18 @@
-import { TOOLS, runTool } from './tools'
+import { TOOLS, runTool, type ToolContext, type ClientAction } from './tools'
 
 // ─────────────────────────────────────────────────────────────────────────
-// Groq inference provider for the ops assistant — OpenAI-compatible chat
-// completions with tool calling. Reuses the same read-only data tools and
-// runTool executor as the Claude path; only the wire format differs.
+// Groq inference provider for the Sidekick assistant — OpenAI-compatible chat
+// completions with tool calling. Reuses the same tools + runTool executor as
+// the Claude path. Returns the reply plus any client actions (navigation /
+// refresh) the tools queued, so the UI can drive itself.
 //
-// Fast + cheap (open models like Llama 3.3 70B) for the interactive assistant,
-// while enrichment research stays on Claude (needs Anthropic's web-search tool).
+// Free + fast (Llama 3.3 70B). Used by default since it needs no Anthropic credits.
 // ─────────────────────────────────────────────────────────────────────────
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
 const MAX_TURNS = 6
 
-// Our tool defs are in Anthropic shape ({name, description, input_schema});
-// Groq/OpenAI want {type:'function', function:{name, description, parameters}}.
 const OPENAI_TOOLS = TOOLS.map(t => ({
   type: 'function' as const,
   function: { name: t.name, description: t.description, parameters: t.input_schema },
@@ -26,8 +24,9 @@ export function groqConfigured(): boolean {
 
 export async function runGroqAssistant(
   userMessages: { role: string; content: string }[],
-  system: string
-): Promise<string> {
+  system: string,
+  ctx: ToolContext
+): Promise<{ reply: string; actions: ClientAction[] }> {
   const key = process.env.GROQ_API_KEY
   if (!key) throw new Error('GROQ_API_KEY is not set')
 
@@ -72,7 +71,7 @@ export async function runGroqAssistant(
         } catch {
           /* malformed args — pass empty */
         }
-        const result = await runTool(call.function?.name, args)
+        const result = await runTool(call.function?.name, args, ctx)
         messages.push({
           role: 'tool',
           tool_call_id: call.id,
@@ -82,8 +81,9 @@ export async function runGroqAssistant(
       continue
     }
 
-    return (msg.content || '').trim() || 'I wasn’t able to answer that — try rephrasing?'
+    const reply = (msg.content || '').trim() || 'Done.'
+    return { reply, actions: ctx.actions }
   }
 
-  return 'I wasn’t able to answer that — try rephrasing?'
+  return { reply: 'I wasn’t able to finish that — try rephrasing?', actions: ctx.actions }
 }
