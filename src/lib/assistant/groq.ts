@@ -81,7 +81,14 @@ export async function runGroqAssistant(
       continue
     }
 
-    const reply = (msg.content || '').trim() || 'Done.'
+    let reply = (msg.content || '').trim()
+    if (!reply) {
+      // The model occasionally returns no text after a tool call — synthesize a
+      // confirmation so the user never sees an empty bubble.
+      reply = ctx.actions.some(a => a.type === 'navigate')
+        ? 'Opening that for you.'
+        : 'Done.'
+    }
     return { reply, actions: ctx.actions, undo: ctx.undo ?? null }
   }
 
