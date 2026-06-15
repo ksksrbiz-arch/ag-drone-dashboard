@@ -1,5 +1,6 @@
 import { TOOLS, runTool, type ToolContext, type ClientAction, type UndoSpec } from './tools'
 import { modelCandidates, noteWorkingModel, shouldTryNextModel } from './groqModel'
+import { recoverToolCalls } from './recover'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Groq inference provider for the Sidekick assistant — OpenAI-compatible chat
@@ -41,6 +42,7 @@ export async function runGroqAssistant(
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     let res: Response | null = null
     let lastErr = ''
+    let lastBody = ''
     for (const model of modelCandidates()) {
       res = await fetch(GROQ_URL, {
         method: 'POST',
@@ -51,26 +53,36 @@ export async function runGroqAssistant(
         noteWorkingModel(model)
         break
       }
-      const body = await res.text()
-      lastErr = `Groq ${res.status}: ${body.slice(0, 300)}`
+      lastBody = await res.text()
+      lastErr = `Groq ${res.status}: ${lastBody.slice(0, 300)}`
       // A model that's unavailable or fumbled the tool call — try the next
       // candidate. Anything else is a real error.
-      if (!shouldTryNextModel(res.status, body)) throw new Error(lastErr)
-    }
-    if (!res || !res.ok) {
-      // Every candidate failed (e.g. all returned tool_use_failed). Degrade
-      // gracefully instead of surfacing a raw Groq 400 to the user.
-      console.error('[groq] all model candidates failed:', lastErr)
-      return {
-        reply: 'Sorry, I had trouble with that one — try rephrasing it?',
-        actions: ctx.actions,
-        undo: ctx.undo ?? null,
-      }
+      if (!shouldTryNextModel(res.status, lastBody)) throw new Error(lastErr)
     }
 
-    const json = await res.json()
-    const msg = json?.choices?.[0]?.message
-    if (!msg) throw new Error('Groq returned no message')
+    let msg: any
+    if (res && res.ok) {
+      const json = await res.json()
+      msg = json?.choices?.[0]?.message
+      if (!msg) throw new Error('Groq returned no message')
+    } else {
+      // Every candidate failed — most likely tool_use_failed, where the model
+      // leaked a text-format tool call. Recover it so the user's intent (open a
+      // page, fetch data, run an action) still happens.
+      const recovered = recoverToolCalls(lastBody)
+      if (!recovered) {
+        console.error('[groq] all model candidates failed:', lastErr)
+        // If earlier turns already queued actions (e.g. navigation), confirm
+        // those rather than apologizing.
+        const reply = ctx.actions.some(a => a.type === 'navigate')
+          ? 'Opening that for you.'
+          : ctx.actions.length
+          ? 'Done.'
+          : 'Sorry, I had trouble with that one — try rephrasing it?'
+        return { reply, actions: ctx.actions, undo: ctx.undo ?? null }
+      }
+      msg = { role: 'assistant', content: null, tool_calls: recovered }
+    }
     messages.push(msg)
 
     const toolCalls = msg.tool_calls

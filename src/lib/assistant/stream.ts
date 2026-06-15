@@ -1,5 +1,6 @@
 import { TOOLS, runTool, type ToolContext } from './tools'
 import { modelCandidates, noteWorkingModel, shouldTryNextModel } from './groqModel'
+import { recoverToolCalls } from './recover'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Streaming agentic loop for the Sidekick assistant (Groq, OpenAI-compatible).
@@ -62,6 +63,7 @@ export async function streamGroqAssistant(
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     let res: Response | null = null
+    let lastBody = ''
     for (const model of modelCandidates()) {
       res = await fetch(GROQ_URL, {
         method: 'POST',
@@ -72,24 +74,45 @@ export async function streamGroqAssistant(
         noteWorkingModel(model)
         break
       }
-      const body = await res.text().catch(() => '')
+      lastBody = await res.text().catch(() => '')
       // A model that's unavailable or fumbled the tool call — try the next
       // candidate. Anything else is a real error.
-      if (!shouldTryNextModel(res.status, body)) {
+      if (!shouldTryNextModel(res.status, lastBody)) {
         emit({ type: 'error', error: `Groq ${res.status}` })
         return
       }
-    }
-    if (!res || !res.ok || !res.body) {
-      // Every candidate failed — stream a graceful message rather than a raw error.
-      emit({ type: 'token', text: 'Sorry, I had trouble with that one — try rephrasing it?' })
-      emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null })
-      return
     }
 
     let content = ''
     const toolCalls: { id: string; name: string; args: string }[] = []
     let finish = ''
+
+    if (!res || !res.ok || !res.body) {
+      // Every candidate failed — most likely tool_use_failed. Recover any
+      // leaked text-format tool call so the user's intent still happens.
+      const recovered = recoverToolCalls(lastBody)
+      if (!recovered) {
+        const reply = ctx.actions.some(a => a.type === 'navigate')
+          ? 'Opening that for you.'
+          : ctx.actions.length
+          ? 'Done.'
+          : 'Sorry, I had trouble with that one — try rephrasing it?'
+        emit({ type: 'token', text: reply })
+        emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null })
+        return
+      }
+      messages.push({ role: 'assistant', content: null, tool_calls: recovered })
+      for (const c of recovered) {
+        emit({ type: 'status', text: TOOL_STATUS[c.function.name] ?? 'Working…' })
+        let args: Record<string, unknown> = {}
+        try {
+          args = JSON.parse(c.function.arguments || '{}')
+        } catch {}
+        const result = await runTool(c.function.name, args, ctx)
+        messages.push({ role: 'tool', tool_call_id: c.id, content: JSON.stringify(result).slice(0, 12000) })
+      }
+      continue
+    }
 
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
