@@ -12,7 +12,10 @@ import { recoverToolCalls } from './recover'
 // ─────────────────────────────────────────────────────────────────────────
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const MAX_TURNS = 6
+// Generous turn budget so the agent can chain several tools (look up → act →
+// verify) within one request instead of stopping short.
+const MAX_TURNS = 10
+const MAX_TOKENS = 2048
 
 const OPENAI_TOOLS = TOOLS.map(t => ({
   type: 'function' as const,
@@ -47,7 +50,7 @@ export async function runGroqAssistant(
       res = await fetch(GROQ_URL, {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages, tools: OPENAI_TOOLS, tool_choice: 'auto', max_tokens: 1500, temperature: 0.2 }),
+        body: JSON.stringify({ model, messages, tools: OPENAI_TOOLS, tool_choice: 'auto', max_tokens: MAX_TOKENS, temperature: 0.2 }),
       })
       if (res.ok) {
         noteWorkingModel(model)
