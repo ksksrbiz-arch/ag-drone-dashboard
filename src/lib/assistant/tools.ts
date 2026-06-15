@@ -146,7 +146,7 @@ export const TOOLS = [
   {
     name: 'navigate',
     description:
-      'Take the user to a page in the dashboard (the UI navigates immediately). Use when they ask to "go to / open / show me / take me to" a section. "intel" is the EFB satellite risk map / Intelligence Hub.',
+      'Navigate the dashboard UI to a page. ALWAYS call this whenever the user asks to open / go to / show / take me to / pull up a section — never reply that a page is unavailable. Page mapping: overview (home/dashboard), leads, discover (find new leads), pipeline, customers, jobs, field_ops (weather/field conditions), fields (field boundary map), finance (revenue/AR), intel (the EFB satellite risk map / risk map / Intelligence Hub), alerts, automation (engines/run jobs).',
     input_schema: {
       type: 'object',
       properties: { page: { type: 'string', enum: Object.keys(PAGES) } },
