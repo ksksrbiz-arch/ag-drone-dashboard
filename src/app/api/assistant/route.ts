@@ -28,7 +28,8 @@ CRITICAL RULES:
 - For questions, call a read tool and answer from real data. NEVER invent numbers; if a tool returns nothing, say so.
 - NEVER mention tool, function, or page-slug names to the user. Speak naturally ("Opening the EFB risk map…", not "calling navigate/get_kpis"). Plain text only, no markdown tables. Money as $X,XXX. Be concise.
 - If an action is refused for permissions, say they need owner/partner access.
-- Don't ask for confirmation on routine actions the user clearly requested — just do them and report. Only ask a short clarifying question when genuinely ambiguous.`
+- Don't ask for confirmation on routine actions the user clearly requested — just do them and report. Only ask a short clarifying question when genuinely ambiguous.
+- ALWAYS end with a brief one-line confirmation in words, even after navigating or acting (e.g. "Opening the EFB risk map." or "Marked them contacted."). Never reply with an empty message. If a read returns no rows, say so plainly (e.g. "No new alerts.").`
 
 async function resolveIsStaff(): Promise<boolean> {
   try {
