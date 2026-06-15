@@ -28,6 +28,14 @@ export async function buildDigest(): Promise<Digest> {
   const needsEnrichment = leads.filter(
     l => !l.enrichment_status || ['pending', 'stale', 'failed'].includes(l.enrichment_status)
   )
+  // Priority momentum since the last scoring run.
+  const risenP1 = leads.filter(
+    l => l.priority_tier === 'P1' && (l.priority_trend === 'up' || l.priority_trend === 'new')
+  )
+  const topGainers = leads
+    .filter(l => l.priority_delta != null && (l.priority_delta as number) > 0)
+    .sort((a, b) => (b.priority_delta as number) - (a.priority_delta as number))
+    .slice(0, 3)
 
   const today = new Date().toISOString().slice(0, 10)
   const scheduledToday = jobs.filter(
@@ -51,6 +59,7 @@ export async function buildDigest(): Promise<Digest> {
   const counts = {
     total_leads: leads.length,
     p1: p1.length,
+    new_p1: risenP1.length,
     treat_now: treatNow.length,
     needs_enrichment: needsEnrichment.length,
     scheduled_today: scheduledToday.length,
@@ -62,11 +71,20 @@ export async function buildDigest(): Promise<Digest> {
     '',
     `🌤️ ${sprayLine}`,
     `🔴 Treat-now leads: *${counts.treat_now}*`,
-    `⭐ P1 priority leads: *${counts.p1}*`,
+    `⭐ P1 priority leads: *${counts.p1}*${counts.new_p1 ? ` (📈 ${counts.new_p1} newly risen)` : ''}`,
     `📅 Jobs scheduled today: *${counts.scheduled_today}*`,
     `🤖 Leads awaiting research: *${counts.needs_enrichment}*`,
     `💵 Outstanding A/R: *$${counts.outstanding_ar.toLocaleString()}*`,
   ]
+
+  if (topGainers.length) {
+    lines.push('', '*Biggest priority gains:*')
+    for (const l of topGainers) {
+      lines.push(
+        `• ${l.business_name ?? l.owner_name ?? 'Lead'} — +${l.priority_delta} → ${l.priority_score} (${l.priority_tier})`
+      )
+    }
+  }
 
   if (treatNow.length) {
     lines.push('', '*Treat now:*')

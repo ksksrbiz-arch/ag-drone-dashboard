@@ -1,21 +1,27 @@
 import type { Lead } from '@/lib/supabase'
 
-// Fields that make a lead actionable for outreach + ops. Data completeness is
-// the share of these that are populated — it feeds the Automation dashboard and
+// Fields that make a lead actionable for outreach + ops, each weighted by how
+// much it matters. Data completeness is the *weighted* share that is populated —
+// a lead with a phone and email is far more actionable than one with only a
+// county, and the score now reflects that. It feeds the Automation dashboard and
 // tells the engine which records still need research.
-const KEY_FIELDS: (keyof Lead)[] = [
-  'business_name',
-  'owner_name',
-  'contact_name',
-  'primary_crop',
-  'est_acreage',
-  'phone',
-  'email',
-  'website',
-  'address_physical',
-  'city',
-  'county',
+const FIELD_WEIGHTS: { field: keyof Lead; weight: number }[] = [
+  { field: 'business_name', weight: 3 }, // who they are
+  { field: 'owner_name', weight: 2 },
+  { field: 'contact_name', weight: 2 },
+  { field: 'phone', weight: 3 }, // can we reach them
+  { field: 'email', weight: 3 },
+  { field: 'primary_crop', weight: 2 }, // fit / what to pitch
+  { field: 'est_acreage', weight: 2 },
+  { field: 'website', weight: 1 },
+  { field: 'address_physical', weight: 1 }, // where they are
+  { field: 'city', weight: 1 },
+  { field: 'county', weight: 1 },
 ]
+
+// The unweighted field list — the research pass targets these gaps first, and
+// callers that just want "which fields are empty" use missingFields().
+const KEY_FIELDS = FIELD_WEIGHTS.map(f => f.field)
 
 function present(v: unknown): boolean {
   if (v == null) return false
@@ -24,13 +30,15 @@ function present(v: unknown): boolean {
   return true
 }
 
-/** 0..100 — percentage of key outreach/ops fields populated. */
+/** 0..100 — importance-weighted percentage of key outreach/ops fields populated. */
 export function computeCompleteness(lead: Lead): number {
-  const filled = KEY_FIELDS.reduce(
-    (n, f) => n + (present(lead[f]) ? 1 : 0),
-    0
-  )
-  return Math.round((filled / KEY_FIELDS.length) * 100)
+  let filled = 0
+  let total = 0
+  for (const { field, weight } of FIELD_WEIGHTS) {
+    total += weight
+    if (present(lead[field])) filled += weight
+  }
+  return total ? Math.round((filled / total) * 100) : 0
 }
 
 /** Field names that are still empty — the research pass targets these first. */

@@ -1,6 +1,6 @@
 import type { Lead } from '@/lib/supabase'
 import type { ResearchResult } from './types'
-import { cheapComplete, extractJson } from '@/lib/ai/llm'
+import { cheapCompleteDetailed, extractJson } from '@/lib/ai/llm'
 import { COMPANY_CONTEXT } from './config'
 import { BUSINESS } from '@/lib/business'
 import { verticalGuidance } from './verticals'
@@ -9,13 +9,14 @@ import { missingFields } from './completeness'
 // ─────────────────────────────────────────────────────────────────────────
 // SSOT-grounded lead analysis (free models: Groq / OpenRouter).
 //
-// The previous version used Claude's web-search tool to *find* new facts. That
-// requires Anthropic credits and can drift. This version runs on the free,
-// OpenAI-compatible models the project already has (via src/lib/ai/llm.ts) and
-// is deliberately constrained: the structured lead record is the SINGLE SOURCE
-// OF TRUTH. The model has no web access and MUST NOT invent facts — it only
-// normalizes values already present and produces advisory outputs (how to
-// approach this grower, best contact method, a short summary).
+// The structured lead record is the SINGLE SOURCE OF TRUTH. The model has no web
+// access and MUST NOT invent facts — it only normalizes values already present
+// and produces advisory outputs grounded strictly in those facts:
+//   • recommended_approach — what to lead with for this grower & vertical
+//   • next_best_action     — the single concrete next step (v3)
+//   • talking_points       — 2–4 grounded points to raise in outreach (v3)
+//   • best_contact_method  — the best channel given the data we hold
+//   • research_summary     — a one/two-sentence picture
 //
 // Real contact-data gaps (phone/email) are filled by the Apollo booster in the
 // engine — an actual data source — never hallucinated here.
@@ -35,17 +36,24 @@ HARD RULES — follow exactly to avoid mistakes:
 - You MAY lightly normalize the formatting of a value that IS present (e.g. tidy
   a crop label, title-case an owner name) but never change its meaning.
 - Your job is ADVISORY, grounded strictly in the provided facts: given what is
-  known about this grower and our drone spray/scouting services in
-  ${BUSINESS.region}, recommend what to lead with, the single best way to make
-  contact given the data we have, and a one- or two-sentence summary.
+  known about this grower and our services in ${BUSINESS.region}, recommend how
+  to approach them and the single best way to make contact given the data we have.
+- "talking_points" must be specific to THIS lead's known facts (crop, acreage,
+  location, season) — generic filler is worse than fewer points. If the data is
+  too sparse for a point, leave it out (return null or a shorter list).
+- "next_best_action" is ONE concrete next step we should take (e.g. "Call the
+  owner to schedule a spring EFB scouting flight"), grounded in what we know.
 - "confidence" (0..1) = how well the KNOWN data supports a solid outreach plan.
-  Sparse data → low confidence. Do not inflate it.
+  Calibrate honestly: ~0.2 = barely a name; ~0.5 = crop + location but no contact;
+  ~0.8 = identity, crop/acreage, and a working phone or email. Do not inflate it.
 
 Return ONLY a single JSON object, no prose, with exactly these keys:
 {
   "primary_crop": string|null,
   "crop_types": string[]|null,
   "recommended_approach": string|null,
+  "next_best_action": string|null,
+  "talking_points": string[]|null,
   "best_contact_method": string|null,
   "research_summary": string|null,
   "confidence": number
@@ -72,6 +80,9 @@ function ssotBrief(lead: Lead): string {
     field('Phone', lead.phone),
     field('Email', lead.email),
     field('Website', lead.website),
+    field('Pipeline stage', lead.loi_status),
+    field('EFB risk (0-100)', lead.composite_efb_risk),
+    field('Recommended action', lead.action_recommendation),
     field('Source', lead.source),
     field('Notes', lead.notes),
   ].filter(Boolean)
@@ -88,19 +99,23 @@ Using ONLY the facts above, produce the advisory JSON.`
 }
 
 export async function researchLead(lead: Lead): Promise<ResearchResult> {
-  const text = await cheapComplete({
+  const { text, tokens } = await cheapCompleteDetailed({
     system: SYSTEM + verticalGuidance(lead.vertical),
     user: ssotBrief(lead),
     json: true,
-    maxTokens: 900,
+    maxTokens: 1100,
     temperature: 0.2,
   })
 
   const raw = extractJson<Record<string, unknown>>(text) ?? {}
-  return normalize(raw, lead)
+  return normalize(raw, lead, tokens)
 }
 
-function normalize(raw: Record<string, unknown>, lead: Lead): ResearchResult {
+function normalize(
+  raw: Record<string, unknown>,
+  lead: Lead,
+  tokens: number
+): ResearchResult {
   const str = (v: unknown): string | null => {
     if (typeof v !== 'string') return null
     const t = v.trim()
@@ -126,6 +141,8 @@ function normalize(raw: Record<string, unknown>, lead: Lead): ResearchResult {
   const primaryCrop = lead.primary_crop ? str(raw.primary_crop) : null
   const cropTypes = lead.primary_crop ? arr(raw.crop_types) : null
 
+  const talkingPoints = arr(raw.talking_points)
+
   return {
     // Identity & contact facts are NEVER taken from the model — only the SSOT
     // (and the engine's Apollo booster) may set these. Returning null here means
@@ -142,10 +159,15 @@ function normalize(raw: Record<string, unknown>, lead: Lead): ResearchResult {
     crop_types: cropTypes,
     // Advisory outputs grounded in the SSOT.
     recommended_approach: str(raw.recommended_approach),
+    next_best_action: str(raw.next_best_action),
+    talking_points: talkingPoints ? talkingPoints.slice(0, 4) : null,
     best_contact_method: str(raw.best_contact_method),
     research_summary: str(raw.research_summary),
     confidence: conf == null ? 0 : Math.min(1, Math.max(0, conf)),
-    field_sources: { recommended_approach: 'reasoning over CRM data (single source of truth)' },
+    field_sources: {
+      recommended_approach: 'reasoning over CRM data (single source of truth)',
+    },
     ai_calls: 1,
+    ai_tokens: tokens,
   }
 }

@@ -465,6 +465,7 @@ export default function LeadsPage() {
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-slate-400">Priority</span>
                     <span className="flex items-center gap-1.5">
+                      <PriorityTrend trend={selected.priority_trend} delta={selected.priority_delta} />
                       {selected.priority_tier && (
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TIER_COLORS[selected.priority_tier] ?? ''}`}>
                           {selected.priority_tier}
@@ -474,6 +475,9 @@ export default function LeadsPage() {
                     </span>
                   </div>
                 )}
+                {selected.priority_explanation && (
+                  <p className="text-xs text-slate-400 mb-1">{selected.priority_explanation}</p>
+                )}
                 <Detail label="Data Completeness" value={selected.data_completeness != null ? `${selected.data_completeness}%` : null} />
                 <Detail label="Enrichment" value={selected.enrichment_status} />
                 <Detail label="AI Confidence" value={selected.enrichment_confidence != null ? `${Math.round(selected.enrichment_confidence * 100)}%` : null} />
@@ -482,6 +486,19 @@ export default function LeadsPage() {
                 {selected.recommended_approach && (
                   <div className="mt-2 text-xs text-slate-600 bg-brand-50 border border-brand-100 rounded-lg p-2.5">
                     <span className="font-semibold text-brand-700">Recommended approach:</span> {selected.recommended_approach}
+                  </div>
+                )}
+                {selected.next_best_action && (
+                  <div className="mt-2 text-xs text-slate-700 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5">
+                    <span className="font-semibold text-emerald-700">Next best action:</span> {selected.next_best_action}
+                  </div>
+                )}
+                {Array.isArray(selected.talking_points) && selected.talking_points.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs text-slate-400 mb-1">Talking points</div>
+                    <ul className="list-disc pl-4 space-y-0.5 text-xs text-slate-600">
+                      {selected.talking_points.map((t, i) => <li key={i}>{t}</li>)}
+                    </ul>
                   </div>
                 )}
                 {selected.research_summary && (
@@ -653,5 +670,23 @@ function Detail({ label, value }: { label: string; value: string | number | null
       <span className="text-slate-400">{label}</span>
       <span className="text-slate-700 font-medium text-right max-w-[150px] truncate">{String(value)}</span>
     </div>
+  )
+}
+
+// Compact priority-momentum indicator (▲ +N / ▼ −N / new) for the detail panel.
+function PriorityTrend({ trend, delta }: { trend?: string | null; delta?: number | null }) {
+  if (!trend) return null
+  const meta: Record<string, { icon: string; cls: string }> = {
+    up: { icon: '▲', cls: 'text-green-600' },
+    down: { icon: '▼', cls: 'text-red-500' },
+    flat: { icon: '▬', cls: 'text-slate-400' },
+    new: { icon: '✦', cls: 'text-brand-500' },
+  }
+  const m = meta[trend] ?? meta.flat
+  const label = trend === 'new' ? 'new' : delta != null && delta !== 0 ? `${delta > 0 ? '+' : ''}${delta}` : ''
+  return (
+    <span className={`text-xs font-medium tabular-nums ${m.cls}`} title={`Priority ${trend}`}>
+      {m.icon}{label && <span className="ml-0.5">{label}</span>}
+    </span>
   )
 }
