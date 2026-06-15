@@ -18,6 +18,7 @@ const navItems = [
   { href: '/fields',     label: 'Fields',     icon: '🗺️' },
   { href: '/finance',    label: 'Finance',    icon: '💵' },
   { href: '/intel',      label: 'EFB Intel',  icon: '🧠' },
+  { href: '/knowledge',  label: 'Knowledge',  icon: '📚' },
   { href: '/alerts',     label: 'Alerts',     icon: '🔔' },
   { href: '/automation', label: 'Automation', icon: '🤖' },
 ]

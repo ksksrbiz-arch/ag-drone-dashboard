@@ -32,6 +32,8 @@ const TOOL_STATUS: Record<string, string> = {
   query_jobs: 'Checking jobs…',
   query_fields: 'Checking mapped fields…',
   query_alerts: 'Checking alerts…',
+  search_knowledge: 'Searching the knowledge base…',
+  list_knowledge: 'Checking what reference docs exist…',
   navigate: 'Opening that…',
   update_lead_stage: 'Updating the pipeline stage…',
   tag_lead: 'Tagging…',

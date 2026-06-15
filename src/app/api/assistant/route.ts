@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { TOOLS, runTool, type ToolContext } from '@/lib/assistant/tools'
 import { runGroqAssistant, groqConfigured } from '@/lib/assistant/groq'
 import { createSupabaseServer } from '@/lib/supabase/server'
+import { getAdminClient } from '@/lib/supabaseAdmin'
 import { BUSINESS, CITY_SHORT } from '@/lib/business'
 
 export const runtime = 'nodejs'
@@ -31,6 +32,27 @@ CRITICAL RULES:
 - Don't ask for confirmation on routine actions the user clearly requested — just do them and report. Only ask a short clarifying question when genuinely ambiguous.
 - If the user's message is vague or open-ended ("do more", "what else", "next", "keep going", "ok"), NEVER repeat your previous answer. Instead, proactively propose 2-3 specific next actions you can take right now — grounded in the current page or live data (e.g. "Want me to pull the hottest P1 leads, map the unmapped fields, or draft outreach for the new ones?") — and ask which to do.
 - ALWAYS end with a brief one-line confirmation in words, even after navigating or acting (e.g. "Opening the EFB risk map." or "Marked them contacted."). Never reply with an empty message. If a read returns no rows, say so plainly (e.g. "No new alerts.").`
+
+// A compact index of the knowledge base so the model knows what reference
+// material exists and reaches for search_knowledge instead of guessing.
+async function knowledgeIndexNote(): Promise<string> {
+  try {
+    const { data } = await getAdminClient()
+      .from('knowledge_documents')
+      .select('folder,title')
+      .order('folder')
+      .limit(60)
+    if (!data?.length) return ''
+    const byFolder: Record<string, string[]> = {}
+    for (const d of data as any[]) (byFolder[d.folder] ||= []).push(d.title)
+    const lines = Object.entries(byFolder)
+      .map(([folder, titles]) => `${folder}: ${titles.slice(0, 8).join(', ')}${titles.length > 8 ? '…' : ''}`)
+      .join('; ')
+    return `\n\nKNOWLEDGE BASE (call search_knowledge to read these before answering company-specific/reference questions) — ${lines}.`
+  } catch {
+    return ''
+  }
+}
 
 async function resolveIsStaff(): Promise<boolean> {
   try {
@@ -76,7 +98,7 @@ export async function POST(req: NextRequest) {
     '/': 'Overview', '/leads': 'Leads', '/discover': 'Discover', '/pipeline': 'Pipeline',
     '/customers': 'Customers', '/jobs': 'Jobs', '/field-ops': 'Field Ops', '/fields': 'Fields',
     '/finance': 'Finance', '/intel': 'EFB Intelligence Hub (satellite risk map)', '/alerts': 'Alerts',
-    '/automation': 'Automation',
+    '/automation': 'Automation', '/knowledge': 'Knowledge Base',
   }
   const reqCtx = body?.context ?? {}
   const focus = reqCtx?.focus && typeof reqCtx.focus === 'object' ? reqCtx.focus : null
@@ -96,12 +118,13 @@ export async function POST(req: NextRequest) {
     contextNote += `\n\nThe user's last message is open-ended. Do NOT repeat any previous answer. Propose 2-3 concrete next actions you can take right now (navigate somewhere useful, pull a specific report, or act on leads/jobs/fields) and ask which they'd like.`
   }
 
+  const [isStaff, kbNote] = await Promise.all([resolveIsStaff(), knowledgeIndexNote()])
   const ctx: ToolContext = {
-    isStaff: await resolveIsStaff(),
+    isStaff,
     actions: [],
     focusLeadId: focus?.kind === 'lead' ? String(focus.id) : null,
   }
-  const system = SYSTEM + contextNote
+  const system = SYSTEM + kbNote + contextNote
 
   // ── Streaming path (SSE) — used by the Sidekick UI ───────────────────────
   if (body?.stream && PROVIDER === 'groq' && groqConfigured()) {

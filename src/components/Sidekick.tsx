@@ -13,12 +13,30 @@ interface ClientAction {
   path?: string
 }
 
-const SUGGESTIONS = [
+// Page-aware starter prompts — what's most useful given where the user is.
+const DEFAULT_SUGGESTIONS = [
   'Show me Marion P1 leads',
   'Tag all stale P1 hazelnut leads follow-up',
   'Recompute EFB risk',
   'Any new alerts?',
 ]
+const PAGE_SUGGESTIONS: Record<string, string[]> = {
+  '/leads': ['Which leads are hottest right now?', 'How many grass-seed leads in Polk County?', 'Tag all stale P1 leads follow-up'],
+  '/pipeline': ['What’s ready to contact?', 'Move all meeting-scheduled hazelnut leads to LOI sent', 'How many LOIs signed?'],
+  '/customers': ['Show active customers', 'Who did we convert recently?'],
+  '/jobs': ['What jobs are scheduled?', 'How much revenue is unpaid?', 'Show completed jobs'],
+  '/fields': ['How many acres have we mapped?', 'Map field boundaries', 'Largest fields by acreage'],
+  '/field-ops': ['What needs treatment now?', 'Recompute EFB risk'],
+  '/intel': ['Which parcels are TREAT NOW?', 'Recompute EFB risk', 'Open the risk map'],
+  '/finance': ['What’s our unpaid invoice total?', 'Revenue collected this month'],
+  '/knowledge': ['What reference docs do we have?', 'What’s our per-acre rate?', 'Summarize the EFB treatment protocol'],
+  '/alerts': ['Any new alerts?', 'What needs attention?'],
+}
+function suggestionsFor(pathname: string): string[] {
+  for (const [prefix, list] of Object.entries(PAGE_SUGGESTIONS))
+    if (pathname === prefix || pathname.startsWith(prefix + '/')) return list
+  return DEFAULT_SUGGESTIONS
+}
 
 const SparkIcon = ({ s = 18 }: { s?: number }) => (
   <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4-2.5 5.2-.6.6-1 1.2-1.2 2H8.7c-.2-.8-.6-1.4-1.2-2C6.2 13 5 11.4 5 9a7 7 0 0 1 7-7Z" strokeLinejoin="round"/><path d="M9 21h6M10 18h4" strokeLinecap="round"/></svg>
@@ -203,7 +221,7 @@ export default function Sidekick() {
                   )}
                   <p className="text-sm text-slate-500">I can pull up data, navigate, and take actions. Try:</p>
                   <div className="flex flex-col gap-1.5 w-full">
-                    {SUGGESTIONS.map(s => (
+                    {suggestionsFor(pathname).map(s => (
                       <button key={s} onClick={() => send(s)} className="tap text-xs text-left bg-white hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-slate-600 transition-colors">{s}</button>
                     ))}
                   </div>
