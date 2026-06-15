@@ -135,6 +135,15 @@ export async function POST(req: NextRequest) {
     contextNote += ` They have ${focus.kind} "${focus.name ?? focus.id}" open — when they say "this ${focus.kind}", "this one", "them", or "it", act on that record (no need to ask which).`
   }
 
+  // One-off attachment: the user attached a file to this message. Inject its
+  // text so the assistant can answer from it (without saving to the knowledge base).
+  const attachment = reqCtx?.attachment && typeof reqCtx.attachment === 'object' ? reqCtx.attachment : null
+  if (attachment?.text) {
+    const name = String(attachment.name ?? 'the file')
+    const text = String(attachment.text).slice(0, 24000)
+    contextNote += `\n\nATTACHED FILE — the user attached "${name}" to this message. Use it as the primary context for their request; quote/summarize from it as needed:\n"""\n${text}\n"""`
+  }
+
   // Vague / open-ended follow-up ("lets do more", "what else", "next") — steer
   // the model to propose concrete next actions instead of echoing its last reply.
   const lastUser = [...incoming].reverse().find((m: any) => m?.role !== 'assistant')
