@@ -20,6 +20,7 @@ import {
   type EfbFactor,
 } from '@/lib/efb/scoring'
 import { acresAtRisk, actionOf } from '@/lib/efb/analytics'
+import { setSidekickFocus } from '@/lib/assistant/context'
 import type { RiskMetric, Basemap, SizeMode } from '@/components/intel/RiskMap'
 
 // Leaflet touches `window`, so load the map client-side only with a skeleton
@@ -136,6 +137,14 @@ export default function IntelPage() {
       setGeocoding(false)
     }
   }
+
+  // Publish the open parcel to Sidekick so "recompute this / mark them" resolves it.
+  useEffect(() => {
+    setSidekickFocus(
+      selected ? { kind: 'lead', id: selected.id, name: selected.business_name ?? selected.owner_name } : null
+    )
+    return () => setSidekickFocus(null)
+  }, [selected])
 
   const crops = useMemo(() => {
     const set = new Set(leads.map(l => l.primary_crop).filter(Boolean) as string[])

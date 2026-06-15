@@ -56,7 +56,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'messages[] required' }, { status: 400 })
   }
 
-  const ctx: ToolContext = { isStaff: await resolveIsStaff(), actions: [] }
+  // Contextual awareness: what page is open + which record is focused.
+  const PAGE_NAMES: Record<string, string> = {
+    '/': 'Overview', '/leads': 'Leads', '/discover': 'Discover', '/pipeline': 'Pipeline',
+    '/customers': 'Customers', '/jobs': 'Jobs', '/field-ops': 'Field Ops', '/fields': 'Fields',
+    '/finance': 'Finance', '/intel': 'EFB Intelligence Hub (satellite risk map)', '/alerts': 'Alerts',
+    '/automation': 'Automation',
+  }
+  const reqCtx = body?.context ?? {}
+  const focus = reqCtx?.focus && typeof reqCtx.focus === 'object' ? reqCtx.focus : null
+  const pageName = PAGE_NAMES[String(reqCtx?.path ?? '')] ?? null
+  let contextNote = ''
+  if (pageName) contextNote += `\n\nCONTEXT: The user is currently on the ${pageName} page.`
+  if (focus?.id && focus?.kind) {
+    contextNote += ` They have ${focus.kind} "${focus.name ?? focus.id}" open — when they say "this ${focus.kind}", "this one", "them", or "it", act on that record (no need to ask which).`
+  }
+
+  const ctx: ToolContext = {
+    isStaff: await resolveIsStaff(),
+    actions: [],
+    focusLeadId: focus?.kind === 'lead' ? String(focus.id) : null,
+  }
+  const system = SYSTEM + contextNote
 
   // ── Groq path (default) ──────────────────────────────────────────────────
   if (PROVIDER === 'groq') {
@@ -67,7 +88,7 @@ export async function POST(req: NextRequest) {
       )
     }
     try {
-      const { reply, actions } = await runGroqAssistant(incoming, SYSTEM, ctx)
+      const { reply, actions } = await runGroqAssistant(incoming, system, ctx)
       return NextResponse.json({ ok: true, reply, actions })
     } catch (err: any) {
       return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 })
@@ -87,7 +108,7 @@ export async function POST(req: NextRequest) {
       const resp: any = await (anthropic.messages.create as any)({
         model: MODEL,
         max_tokens: 1500,
-        system: SYSTEM,
+        system,
         tools: TOOLS.map(t => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
         messages,
       })

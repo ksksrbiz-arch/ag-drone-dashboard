@@ -22,6 +22,8 @@ export interface ClientAction {
 export interface ToolContext {
   isStaff: boolean
   actions: ClientAction[]
+  /** The lead the user currently has open on screen, if any (contextual "this lead"). */
+  focusLeadId?: string | null
 }
 
 const LEAD_COLS =
@@ -220,12 +222,13 @@ function applyLeadFilters(q: any, a: Args) {
   return q
 }
 
-/** Resolve a single lead by id or by a name search; returns the row or an error. */
-async function resolveLead(supabase: any, args: Args) {
-  if (args.lead_id) {
-    const { data } = await supabase.from('leads').select('*').eq('id', args.lead_id).limit(1)
+/** Resolve a single lead by id, by name search, or by the on-screen focus. */
+async function resolveLead(supabase: any, args: Args, ctx: ToolContext) {
+  const id = args.lead_id || (!args.search ? ctx.focusLeadId : null)
+  if (id) {
+    const { data } = await supabase.from('leads').select('*').eq('id', id).limit(1)
     if (data?.[0]) return { lead: data[0] }
-    return { error: `No lead with id ${args.lead_id}.` }
+    return { error: `No lead with id ${id}.` }
   }
   if (args.search) {
     const { data } = await supabase
@@ -244,7 +247,17 @@ async function resolveLead(supabase: any, args: Args) {
       }
     return { lead: data[0] }
   }
-  return { error: 'Provide a lead_id or a name to search.' }
+  return { error: 'No lead specified — open a lead or give me a name.' }
+}
+
+/** Idempotency cooldown: true if a run row for `table` started within `secs`. */
+async function ranRecently(supabase: any, table: string, secs: number): Promise<boolean> {
+  const since = new Date(Date.now() - secs * 1000).toISOString()
+  const { count } = await supabase
+    .from(table)
+    .select('id', { count: 'exact', head: true })
+    .gte('started_at', since)
+  return (count ?? 0) > 0
 }
 
 const staffOnly = { error: 'That action needs owner/partner access — you have read-only access.' }
@@ -306,30 +319,41 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
     case 'update_lead_stage': {
       if (!ctx.isStaff) return staffOnly
       if (!LOI_STAGES.includes(args.loi_status)) return { error: 'Invalid loi_status.' }
-      const r = await resolveLead(supabase, args)
+      const r = await resolveLead(supabase, args, ctx)
       if (r.error) return r
+      const name = r.lead.business_name ?? r.lead.owner_name
+      // Idempotent: already at the target stage → no write.
+      if (r.lead.loi_status === args.loi_status) {
+        return { ok: true, noop: true, lead: name, loi_status: args.loi_status, message: `${name} is already ${args.loi_status}.` }
+      }
       const patch: any = { loi_status: args.loi_status }
       if (args.loi_status === 'loi_sent') patch.loi_sent_at = new Date().toISOString()
       if (args.loi_status === 'loi_signed') patch.loi_signed_at = new Date().toISOString()
       const { error } = await supabase.from('leads').update(patch).eq('id', r.lead.id)
       if (error) return { error: error.message }
       ctx.actions.push({ type: 'refresh' })
-      return { ok: true, lead: r.lead.business_name ?? r.lead.owner_name, loi_status: args.loi_status }
+      return { ok: true, lead: name, loi_status: args.loi_status }
     }
     case 'tag_lead': {
       if (!ctx.isStaff) return staffOnly
       const tags = Array.isArray(args.tags) ? args.tags.filter((t: any) => typeof t === 'string' && t.trim()) : []
       if (!tags.length) return { error: 'No tags provided.' }
-      const r = await resolveLead(supabase, args)
+      const r = await resolveLead(supabase, args, ctx)
       if (r.error) return r
-      const merged = Array.from(new Set([...(r.lead.tags ?? []), ...tags.map((t: string) => t.trim())]))
+      const name = r.lead.business_name ?? r.lead.owner_name
+      const existing: string[] = r.lead.tags ?? []
+      const merged = Array.from(new Set([...existing, ...tags.map((t: string) => t.trim())]))
+      // Idempotent: every requested tag already present → no write.
+      if (merged.length === existing.length) {
+        return { ok: true, noop: true, lead: name, tags: merged, message: `${name} already has those tags.` }
+      }
       const { error } = await supabase.from('leads').update({ tags: merged }).eq('id', r.lead.id)
       if (error) return { error: error.message }
-      return { ok: true, lead: r.lead.business_name ?? r.lead.owner_name, tags: merged }
+      return { ok: true, lead: name, tags: merged }
     }
     case 'convert_lead_to_customer': {
       if (!ctx.isStaff) return staffOnly
-      const r = await resolveLead(supabase, args)
+      const r = await resolveLead(supabase, args, ctx)
       if (r.error) return r
       const l = r.lead
       const { data: existing } = await supabase.from('customers').select('id').eq('lead_id', l.id).limit(1)
@@ -361,12 +385,16 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       try {
         switch (args.operation) {
           case 'enrichment': {
+            if (await ranRecently(supabase, 'enrichment_runs', 90))
+              return { ok: true, noop: true, operation: 'enrichment', message: 'An enrichment run just ran moments ago — skipping the duplicate.' }
             const { runEnrichment } = await import('@/lib/enrichment/engine')
             const s = await runEnrichment({ trigger: 'manual', limit: 10 })
             ctx.actions.push({ type: 'refresh' })
             return { ok: true, operation: 'enrichment', processed: s.leadsProcessed, enriched: s.leadsEnriched }
           }
           case 'efb_recompute': {
+            if (await ranRecently(supabase, 'efb_runs', 90))
+              return { ok: true, noop: true, operation: 'efb_recompute', message: 'EFB risk was just recomputed moments ago — skipping the duplicate.' }
             const { runEfbRecompute } = await import('@/lib/efb/engine')
             const s = await runEfbRecompute({ trigger: 'manual', limit: 300 })
             ctx.actions.push({ type: 'refresh' })
