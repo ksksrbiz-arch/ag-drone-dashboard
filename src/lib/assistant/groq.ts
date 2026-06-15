@@ -26,6 +26,37 @@ export function groqConfigured(): boolean {
   return Boolean(process.env.GROQ_API_KEY)
 }
 
+/**
+ * Last-resort answer with NO tools attached, so a model that keeps fumbling
+ * tool calls (tool_use_failed) can still respond in plain language or ask a
+ * clarifying question instead of dead-ending. Returns '' if even this fails.
+ */
+export async function answerWithoutTools(key: string, messages: any[]): Promise<string> {
+  const msgs = [
+    ...messages,
+    {
+      role: 'user',
+      content:
+        'Answer my last request directly, in plain language. If it needed data you could not retrieve, say what you can do or ask one short clarifying question. Do not mention tools or functions.',
+    },
+  ]
+  for (const model of modelCandidates()) {
+    const res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: msgs, max_tokens: MAX_TOKENS, temperature: 0.3 }),
+    })
+    if (res.ok) {
+      const json = await res.json()
+      noteWorkingModel(model)
+      return String(json?.choices?.[0]?.message?.content ?? '').trim()
+    }
+    const body = await res.text().catch(() => '')
+    if (!shouldTryNextModel(res.status, body)) break
+  }
+  return ''
+}
+
 export async function runGroqAssistant(
   userMessages: { role: string; content: string }[],
   system: string,
@@ -75,14 +106,16 @@ export async function runGroqAssistant(
       const recovered = recoverToolCalls(lastBody)
       if (!recovered) {
         console.error('[groq] all model candidates failed:', lastErr)
-        // If earlier turns already queued actions (e.g. navigation), confirm
-        // those rather than apologizing.
-        const reply = ctx.actions.some(a => a.type === 'navigate')
-          ? 'Opening that for you.'
-          : ctx.actions.length
-          ? 'Done.'
-          : 'Sorry, I had trouble with that one — try rephrasing it?'
-        return { reply, actions: ctx.actions, undo: ctx.undo ?? null }
+        // If earlier turns already queued actions (e.g. navigation), confirm those.
+        if (ctx.actions.some(a => a.type === 'navigate')) return { reply: 'Opening that for you.', actions: ctx.actions, undo: ctx.undo ?? null }
+        if (ctx.actions.length) return { reply: 'Done.', actions: ctx.actions, undo: ctx.undo ?? null }
+        // Otherwise make one tool-free attempt so a malformed tool call doesn't dead-end.
+        const text = await answerWithoutTools(key, messages).catch(() => '')
+        return {
+          reply: text || 'Sorry, I had trouble with that one — try rephrasing it?',
+          actions: ctx.actions,
+          undo: ctx.undo ?? null,
+        }
       }
       msg = { role: 'assistant', content: null, tool_calls: recovered }
     }

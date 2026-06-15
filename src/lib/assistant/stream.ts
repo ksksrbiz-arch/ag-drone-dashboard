@@ -1,6 +1,7 @@
 import { TOOLS, runTool, type ToolContext } from './tools'
 import { modelCandidates, noteWorkingModel, shouldTryNextModel } from './groqModel'
 import { recoverToolCalls } from './recover'
+import { answerWithoutTools } from './groq'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Streaming agentic loop for the Sidekick assistant (Groq, OpenAI-compatible).
@@ -31,6 +32,9 @@ const TOOL_STATUS: Record<string, string> = {
   get_kpis: 'Pulling the latest numbers…',
   query_leads: 'Searching leads…',
   count_leads: 'Counting leads…',
+  breakdown_leads: 'Breaking that down…',
+  create_lead: 'Adding the lead…',
+  mark_alerts_read: 'Clearing alerts…',
   query_customers: 'Looking up customers…',
   get_customer_detail: 'Pulling up that customer…',
   update_customer_status: 'Updating the customer…',
@@ -40,6 +44,7 @@ const TOOL_STATUS: Record<string, string> = {
   update_job_status: 'Updating the job…',
   create_job: 'Creating the job…',
   query_fields: 'Checking mapped fields…',
+  get_fields_summary: 'Totaling the acreage…',
   query_alerts: 'Checking alerts…',
   get_recent_activity: 'Reviewing recent activity…',
   search_knowledge: 'Searching the knowledge base…',
@@ -107,11 +112,10 @@ export async function streamGroqAssistant(
       // leaked text-format tool call so the user's intent still happens.
       const recovered = recoverToolCalls(lastBody)
       if (!recovered) {
-        const reply = ctx.actions.some(a => a.type === 'navigate')
-          ? 'Opening that for you.'
-          : ctx.actions.length
-          ? 'Done.'
-          : 'Sorry, I had trouble with that one — try rephrasing it?'
+        let reply: string
+        if (ctx.actions.some(a => a.type === 'navigate')) reply = 'Opening that for you.'
+        else if (ctx.actions.length) reply = 'Done.'
+        else reply = (await answerWithoutTools(key, messages).catch(() => '')) || 'Sorry, I had trouble with that one — try rephrasing it?'
         emit({ type: 'token', text: reply })
         emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null })
         return

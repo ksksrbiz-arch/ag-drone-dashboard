@@ -128,6 +128,26 @@ export const TOOLS = [
     },
   },
   {
+    name: 'breakdown_leads',
+    description:
+      'Group leads and count them by a dimension — crop, county, city, priority tier, pipeline stage, action, vertical, or enrichment status. Use for "report/breakdown of leads by crop", "how many leads per county", "leads by stage". Optionally pre-filter with the same filters as query_leads. Returns counts per group, largest first.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        group_by: {
+          type: 'string',
+          enum: ['primary_crop', 'county', 'city', 'priority_tier', 'loi_status', 'action_recommendation', 'vertical', 'enrichment_status'],
+          description: 'the dimension to group by (e.g. primary_crop for "by crop type")',
+        },
+        county: { type: 'string' }, city: { type: 'string' }, crop: { type: 'string' },
+        vertical: { type: 'string' }, priority_tier: { type: 'string' },
+        action_recommendation: { type: 'string' }, loi_status: { type: 'string' },
+        enrichment_status: { type: 'string' }, min_priority_score: { type: 'number' },
+      },
+      required: ['group_by'],
+    },
+  },
+  {
     name: 'query_customers',
     description: 'Search customers by status and/or a name/city search term.',
     input_schema: {
@@ -206,6 +226,12 @@ export const TOOLS = [
       },
       required: [],
     },
+  },
+  {
+    name: 'get_fields_summary',
+    description:
+      'Summarize mapped fields: total acreage, number of fields, and a breakdown of acres by crop. Use for "how many acres have we mapped", "acres by crop", "total mapped area". More accurate than listing fields for totals.',
+    input_schema: { type: 'object', properties: {}, required: [] },
   },
   // ── Navigation — drive the user through the app ──────────────────────────
   {
@@ -355,6 +381,36 @@ export const TOOLS = [
       type: 'object',
       properties: { operation: { type: 'string', enum: ['enrichment', 'efb_recompute', 'geocode', 'boundaries'] } },
       required: ['operation'],
+    },
+  },
+  {
+    name: 'create_lead',
+    description:
+      'Create a new lead — use to capture a prospect from a call or referral ("add a lead: Johnson Farms, hazelnuts in Marion, 80 acres"). business_name is required; everything else is optional. Staff only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        business_name: { type: 'string' },
+        owner_name: { type: 'string' },
+        city: { type: 'string' },
+        county: { type: 'string' },
+        primary_crop: { type: 'string' },
+        est_acreage: { type: 'number' },
+        phone: { type: 'string' },
+        email: { type: 'string' },
+        vertical: { type: 'string', enum: ['ag_spray', 'insurance', 'real_estate', 'construction'] },
+      },
+      required: ['business_name'],
+    },
+  },
+  {
+    name: 'mark_alerts_read',
+    description:
+      'Mark alerts as read — clear the inbox. By default marks ALL unread alerts read; pass alert_id to mark just one. Use for "clear my alerts / mark alerts read / dismiss alerts". Staff only.',
+    input_schema: {
+      type: 'object',
+      properties: { all: { type: 'boolean', description: 'mark every unread alert read (default true)' }, alert_id: { type: 'string' } },
+      required: [],
     },
   },
   {
@@ -527,6 +583,7 @@ const MUTATING = new Set([
   'update_lead_stage', 'tag_lead', 'convert_lead_to_customer', 'run_operation',
   'bulk_tag_leads', 'bulk_update_stage', 'add_to_knowledge',
   'update_job_status', 'create_job', 'update_customer_status', 'add_customer_note',
+  'create_lead', 'mark_alerts_read',
 ])
 
 /** Human-readable one-liner for an audit-log entry. */
@@ -543,6 +600,8 @@ function summarizeAction(name: string, _args: Args, r: any): string {
     case 'create_job': return `Created job "${r.job}" (${r.status})`
     case 'update_customer_status': return `Set ${r.customer} to ${r.status}`
     case 'add_customer_note': return `Added a note to ${r.customer}`
+    case 'create_lead': return `Created lead "${r.lead}"`
+    case 'mark_alerts_read': return `Marked ${r.marked} alert${r.marked === 1 ? '' : 's'} read`
     default: return `Ran ${name}`
   }
 }
@@ -597,6 +656,23 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       q = applyLeadFilters(q, args)
       const { count, error } = await q
       return error ? { error: error.message } : { count }
+    }
+    case 'breakdown_leads': {
+      const DIMS = ['primary_crop', 'county', 'city', 'priority_tier', 'loi_status', 'action_recommendation', 'vertical', 'enrichment_status']
+      const dim = DIMS.includes(args.group_by) ? args.group_by : 'primary_crop'
+      let q = supabase.from('leads').select(dim).limit(5000)
+      q = applyLeadFilters(q, args)
+      const { data, error } = await q
+      if (error) return { error: error.message }
+      const counts: Record<string, number> = {}
+      for (const row of (data ?? []) as any[]) {
+        const key = row[dim] == null || row[dim] === '' ? '(none)' : String(row[dim])
+        counts[key] = (counts[key] ?? 0) + 1
+      }
+      const groups = Object.entries(counts)
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => b.count - a.count)
+      return { group_by: dim, total: data?.length ?? 0, groups }
     }
     case 'query_customers': {
       let q = supabase.from('customers').select(CUSTOMER_COLS).limit(cap(args.limit, 15, 50))
@@ -697,6 +773,26 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       if (args.customer_id) q = q.eq('customer_id', args.customer_id)
       const { data, error } = await q
       return error ? { error: error.message } : data
+    }
+    case 'get_fields_summary': {
+      const { data, error } = await supabase.from('fields').select('acreage, crop').limit(5000)
+      if (error) return { error: error.message }
+      const rows = (data ?? []) as any[]
+      const num = (v: any) => (typeof v === 'number' ? v : Number(v) || 0)
+      let totalAcres = 0
+      const byCrop: Record<string, { fields: number; acres: number }> = {}
+      for (const r of rows) {
+        const acres = num(r.acreage)
+        totalAcres += acres
+        const crop = r.crop || '(unspecified)'
+        byCrop[crop] ||= { fields: 0, acres: 0 }
+        byCrop[crop].fields++
+        byCrop[crop].acres += acres
+      }
+      const by_crop = Object.entries(byCrop)
+        .map(([crop, v]) => ({ crop, fields: v.fields, acres: Math.round(v.acres) }))
+        .sort((a, b) => b.acres - a.acres)
+      return { field_count: rows.length, total_acres: Math.round(totalAcres), by_crop }
     }
 
     case 'query_alerts': {
@@ -982,6 +1078,48 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       }
     }
 
+    // ── capture + inbox (staff only) ────────────────────────────────────────
+    case 'create_lead': {
+      if (!ctx.isStaff) return staffOnly
+      const business_name = String(args.business_name ?? '').trim()
+      if (!business_name) return { error: 'A business name is required to create a lead.' }
+      // Idempotent guard: don't create an obvious duplicate.
+      const { data: dupe } = await supabase.from('leads').select('id, business_name').ilike('business_name', business_name).limit(1)
+      if (dupe?.[0]) return { ok: true, noop: true, lead_id: dupe[0].id, lead: dupe[0].business_name, message: `A lead named "${dupe[0].business_name}" already exists.` }
+      const row: any = { business_name }
+      for (const k of ['owner_name', 'city', 'county', 'primary_crop', 'phone', 'email'])
+        if (args[k] != null && args[k] !== '') row[k] = String(args[k])
+      if (typeof args.est_acreage === 'number') row.est_acreage = args.est_acreage
+      if (args.vertical) row.vertical = args.vertical
+      const { data, error } = await supabase.from('leads').insert(row).select('id').single()
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      if (data?.id) ctx.undo = { label: `lead "${business_name}"`, tool: '_delete_lead', args: { id: data.id } }
+      return { ok: true, lead_id: data?.id, lead: business_name }
+    }
+    case 'mark_alerts_read': {
+      if (!ctx.isStaff) return staffOnly
+      if (args.alert_id) {
+        const { data: a } = await supabase.from('alerts').select('id, read, title').eq('id', args.alert_id).limit(1)
+        if (!a?.[0]) return { error: `No alert with id ${args.alert_id}.` }
+        if (a[0].read) return { ok: true, noop: true, message: 'That alert is already read.' }
+        const { error } = await supabase.from('alerts').update({ read: true }).eq('id', args.alert_id)
+        if (error) return { error: error.message }
+        ctx.actions.push({ type: 'refresh' })
+        ctx.undo = { label: 'that alert', tool: '_mark_alerts_unread', args: { ids: [args.alert_id] } }
+        return { ok: true, marked: 1 }
+      }
+      // Default: clear all unread.
+      const { data: unread } = await supabase.from('alerts').select('id').eq('read', false).limit(1000)
+      const ids = (unread ?? []).map((r: any) => r.id)
+      if (!ids.length) return { ok: true, noop: true, marked: 0, message: 'No unread alerts to clear.' }
+      const { error } = await supabase.from('alerts').update({ read: true }).in('id', ids)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      ctx.undo = { label: `${ids.length} alerts`, tool: '_mark_alerts_unread', args: { ids } }
+      return { ok: true, marked: ids.length }
+    }
+
     // ── job actions (staff only) ────────────────────────────────────────────
     case 'update_job_status': {
       if (!ctx.isStaff) return staffOnly
@@ -1134,6 +1272,23 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       if (!ctx.isStaff) return staffOnly
       if (!args.id || !args.patch) return { error: 'bad undo args' }
       const { error } = await supabase.from('jobs').update(args.patch).eq('id', args.id)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true }
+    }
+    case '_delete_lead': {
+      if (!ctx.isStaff) return staffOnly
+      if (!args.id) return { error: 'bad undo args' }
+      const { error } = await supabase.from('leads').delete().eq('id', args.id)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true }
+    }
+    case '_mark_alerts_unread': {
+      if (!ctx.isStaff) return staffOnly
+      const ids: string[] = Array.isArray(args.ids) ? args.ids : []
+      if (!ids.length) return { error: 'bad undo args' }
+      const { error } = await supabase.from('alerts').update({ read: false }).in('id', ids)
       if (error) return { error: error.message }
       ctx.actions.push({ type: 'refresh' })
       return { ok: true }
