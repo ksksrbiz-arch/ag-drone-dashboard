@@ -1,4 +1,5 @@
 import { TOOLS, runTool, type ToolContext } from './tools'
+import { modelCandidates, noteWorkingModel, isModelError } from './groqModel'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Streaming agentic loop for the Sidekick assistant (Groq, OpenAI-compatible).
@@ -9,7 +10,6 @@ import { TOOLS, runTool, type ToolContext } from './tools'
 // ─────────────────────────────────────────────────────────────────────────
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
 const MAX_TURNS = 6
 
 const OPENAI_TOOLS = TOOLS.map(t => ({
@@ -61,21 +61,26 @@ export async function streamGroqAssistant(
   ]
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    const res = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages,
-        tools: OPENAI_TOOLS,
-        tool_choice: 'auto',
-        max_tokens: 1500,
-        temperature: 0.2,
-        stream: true,
-      }),
-    })
-    if (!res.ok || !res.body) {
-      emit({ type: 'error', error: `Groq ${res.status}` })
+    let res: Response | null = null
+    for (const model of modelCandidates()) {
+      res = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages, tools: OPENAI_TOOLS, tool_choice: 'auto', max_tokens: 1500, temperature: 0.2, stream: true }),
+      })
+      if (res.ok && res.body) {
+        noteWorkingModel(model)
+        break
+      }
+      const body = await res.text().catch(() => '')
+      if (!isModelError(res.status, body)) {
+        emit({ type: 'error', error: `Groq ${res.status}` })
+        return
+      }
+      // model unavailable — try the next candidate
+    }
+    if (!res || !res.ok || !res.body) {
+      emit({ type: 'error', error: 'No usable Groq model' })
       return
     }
 
