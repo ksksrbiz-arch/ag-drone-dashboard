@@ -1,4 +1,5 @@
 import { TOOLS, runTool, type ToolContext, type ClientAction, type UndoSpec } from './tools'
+import { modelCandidates, noteWorkingModel, isModelError } from './groqModel'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Groq inference provider for the Sidekick assistant — OpenAI-compatible chat
@@ -10,7 +11,6 @@ import { TOOLS, runTool, type ToolContext, type ClientAction, type UndoSpec } fr
 // ─────────────────────────────────────────────────────────────────────────
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
 const MAX_TURNS = 6
 
 const OPENAI_TOOLS = TOOLS.map(t => ({
@@ -39,23 +39,22 @@ export async function runGroqAssistant(
   ]
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    const res = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages,
-        tools: OPENAI_TOOLS,
-        tool_choice: 'auto',
-        max_tokens: 1500,
-        temperature: 0.2,
-      }),
-    })
-
-    if (!res.ok) {
+    let res: Response | null = null
+    for (const model of modelCandidates()) {
+      res = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages, tools: OPENAI_TOOLS, tool_choice: 'auto', max_tokens: 1500, temperature: 0.2 }),
+      })
+      if (res.ok) {
+        noteWorkingModel(model)
+        break
+      }
       const body = await res.text()
-      throw new Error(`Groq ${res.status}: ${body.slice(0, 300)}`)
+      if (!isModelError(res.status, body)) throw new Error(`Groq ${res.status}: ${body.slice(0, 300)}`)
+      // model unavailable — try the next candidate
     }
+    if (!res || !res.ok) throw new Error('No usable Groq model')
 
     const json = await res.json()
     const msg = json?.choices?.[0]?.message
