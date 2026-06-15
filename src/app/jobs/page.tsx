@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { setSidekickFocus } from '@/lib/assistant/context'
 import { supabase, type Job, type JobStatus } from '@/lib/supabase'
 
 const STATUS_COLS: { status: JobStatus; label: string; color: string }[] = [
@@ -27,6 +28,10 @@ export default function JobsPage() {
   const [statusFilter, setStatusFilter] = useState<JobStatus | 'all'>('all')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Job | null>(null)
+  useEffect(() => {
+    setSidekickFocus(selected ? { kind: 'job', id: selected.id, name: selected.job_title } : null)
+    return () => setSidekickFocus(null)
+  }, [selected])
   const [report, setReport] = useState<string | null>(null)
   const [reportBusy, setReportBusy] = useState(false)
 

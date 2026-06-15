@@ -51,6 +51,19 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ ok: false, error: 'Bad request' }, { status: 400 })
   }
+  // ── Undo path: client clicked Undo → run the stored inverse op directly. ──
+  if (body?.undo?.tool) {
+    const ctx: ToolContext = { isStaff: await resolveIsStaff(), actions: [] }
+    const result: any = await runTool(String(body.undo.tool), body.undo.args ?? {}, ctx)
+    if (result?.error) return NextResponse.json({ ok: true, reply: result.error, actions: ctx.actions })
+    return NextResponse.json({
+      ok: true,
+      reply: `Undone — reverted ${body.undo.label ?? 'the last change'}.`,
+      actions: ctx.actions,
+      undo: null,
+    })
+  }
+
   const incoming = Array.isArray(body?.messages) ? body.messages : null
   if (!incoming) {
     return NextResponse.json({ ok: false, error: 'messages[] required' }, { status: 400 })
@@ -88,8 +101,8 @@ export async function POST(req: NextRequest) {
       )
     }
     try {
-      const { reply, actions } = await runGroqAssistant(incoming, system, ctx)
-      return NextResponse.json({ ok: true, reply, actions })
+      const { reply, actions, undo } = await runGroqAssistant(incoming, system, ctx)
+      return NextResponse.json({ ok: true, reply, actions, undo })
     } catch (err: any) {
       return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 })
     }
@@ -139,7 +152,7 @@ export async function POST(req: NextRequest) {
         .map((b: any) => b.text)
         .join('\n')
         .trim() || 'Done.'
-    return NextResponse.json({ ok: true, reply, actions: ctx.actions })
+    return NextResponse.json({ ok: true, reply, actions: ctx.actions, undo: ctx.undo ?? null })
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 })
   }

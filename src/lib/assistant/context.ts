@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 export interface SidekickFocus {
-  kind: 'lead' | 'customer' | 'field'
+  kind: 'lead' | 'customer' | 'job' | 'field'
   id: string
   name?: string | null
 }

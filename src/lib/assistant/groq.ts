@@ -1,4 +1,4 @@
-import { TOOLS, runTool, type ToolContext, type ClientAction } from './tools'
+import { TOOLS, runTool, type ToolContext, type ClientAction, type UndoSpec } from './tools'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Groq inference provider for the Sidekick assistant — OpenAI-compatible chat
@@ -26,7 +26,7 @@ export async function runGroqAssistant(
   userMessages: { role: string; content: string }[],
   system: string,
   ctx: ToolContext
-): Promise<{ reply: string; actions: ClientAction[] }> {
+): Promise<{ reply: string; actions: ClientAction[]; undo: UndoSpec | null }> {
   const key = process.env.GROQ_API_KEY
   if (!key) throw new Error('GROQ_API_KEY is not set')
 
@@ -82,8 +82,8 @@ export async function runGroqAssistant(
     }
 
     const reply = (msg.content || '').trim() || 'Done.'
-    return { reply, actions: ctx.actions }
+    return { reply, actions: ctx.actions, undo: ctx.undo ?? null }
   }
 
-  return { reply: 'I wasn’t able to finish that — try rephrasing?', actions: ctx.actions }
+  return { reply: 'I wasn’t able to finish that — try rephrasing?', actions: ctx.actions, undo: ctx.undo ?? null }
 }

@@ -29,11 +29,37 @@ export default function Sidekick() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastUndo, setLastUndo] = useState<any>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, sending])
+
+  // Restore / persist the conversation across reloads.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('sidekick:chat')
+      if (saved) setMessages(JSON.parse(saved).slice(-30))
+    } catch {}
+  }, [])
+  useEffect(() => {
+    try {
+      localStorage.setItem('sidekick:chat', JSON.stringify(messages.slice(-30)))
+    } catch {}
+  }, [messages])
+
+  // ⌘K / Ctrl-K toggles the panel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setOpen(o => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Don't render on the auth pages.
   if (pathname.startsWith('/login') || pathname.startsWith('/auth')) return null
@@ -73,6 +99,32 @@ export default function Sidekick() {
       } else {
         setMessages(m => [...m, { role: 'assistant', content: json.reply }])
         runActions(json.actions)
+        setLastUndo(json.undo ?? null)
+      }
+    } catch (err: any) {
+      setError(String(err?.message ?? err))
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function undoLast() {
+    if (!lastUndo || sending) return
+    const undo = lastUndo
+    setLastUndo(null)
+    setSending(true)
+    try {
+      const res = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ undo, context: { path: pathname } }),
+      })
+      const json = await res.json()
+      if (res.ok && json.ok !== false) {
+        setMessages(m => [...m, { role: 'assistant', content: json.reply }])
+        runActions(json.actions)
+      } else {
+        setError(json.error ?? res.statusText)
       }
     } catch (err: any) {
       setError(String(err?.message ?? err))
@@ -108,7 +160,7 @@ export default function Sidekick() {
               </div>
               <div className="flex items-center gap-1">
                 {messages.length > 0 && (
-                  <button onClick={() => setMessages([])} className="tap-sq text-slate-300 hover:text-white text-xs px-2">Clear</button>
+                  <button onClick={() => { setMessages([]); setLastUndo(null) }} className="tap-sq text-slate-300 hover:text-white text-xs px-2">Clear</button>
                 )}
                 <button onClick={() => setOpen(false)} aria-label="Close" className="tap-sq text-slate-300 hover:text-white text-xl leading-none">×</button>
               </div>
@@ -145,6 +197,15 @@ export default function Sidekick() {
                 </div>
               )}
               {error && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+              {lastUndo && !sending && (
+                <div className="flex justify-start">
+                  <button onClick={undoLast}
+                    className="tap inline-flex items-center gap-1.5 text-xs border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 rounded-full px-3 py-1 transition-colors">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6M3 13a9 9 0 1 0 3-7.7L3 8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Undo {String(lastUndo.label ?? 'last action')}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Input */}

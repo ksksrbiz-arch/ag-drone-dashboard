@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { setSidekickFocus } from '@/lib/assistant/context'
 import {
   supabase,
   type Customer,
@@ -34,6 +35,10 @@ export default function CustomersPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<CustomerStatus | 'all'>('all')
   const [selected, setSelected] = useState<Customer | null>(null)
+  useEffect(() => {
+    setSidekickFocus(selected ? { kind: 'customer', id: selected.id, name: selected.business_name ?? selected.contact_name } : null)
+    return () => setSidekickFocus(null)
+  }, [selected])
   const [creating, setCreating] = useState(false)
 
   const load = useCallback(async () => {

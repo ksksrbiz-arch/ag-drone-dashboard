@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { supabase, type Field, type Customer } from '@/lib/supabase'
+import { setSidekickFocus } from '@/lib/assistant/context'
 import { parseGeoJSON } from '@/lib/geo'
 import { MapSkeleton } from '@/components/intel/Skeletons'
 
@@ -18,6 +19,10 @@ export default function FieldsPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Field | null>(null)
+  useEffect(() => {
+    setSidekickFocus(selected ? { kind: 'field', id: selected.id, name: selected.name } : null)
+    return () => setSidekickFocus(null)
+  }, [selected])
   const [backfilling, setBackfilling] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 

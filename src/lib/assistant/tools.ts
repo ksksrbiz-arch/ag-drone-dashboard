@@ -19,11 +19,19 @@ export interface ClientAction {
   message?: string
 }
 
+export interface UndoSpec {
+  label: string
+  tool: string
+  args: Record<string, any>
+}
+
 export interface ToolContext {
   isStaff: boolean
   actions: ClientAction[]
   /** The lead the user currently has open on screen, if any (contextual "this lead"). */
   focusLeadId?: string | null
+  /** Set by a reversible write so the UI can offer an Undo. */
+  undo?: UndoSpec | null
 }
 
 const LEAD_COLS =
@@ -148,11 +156,37 @@ export const TOOLS = [
   {
     name: 'navigate',
     description:
-      'Navigate the dashboard UI to a page. ALWAYS call this whenever the user asks to open / go to / show / take me to / pull up a section — never reply that a page is unavailable. Page mapping: overview (home/dashboard), leads, discover (find new leads), pipeline, customers, jobs, field_ops (weather/field conditions), fields (field boundary map), finance (revenue/AR), intel (the EFB satellite risk map / risk map / Intelligence Hub), alerts, automation (engines/run jobs).',
+      'Navigate the dashboard UI to a page, optionally pre-filtering it. ALWAYS call this whenever the user asks to open / go to / show / take me to / pull up a section or a filtered view — never reply that a page is unavailable. Page mapping: overview, leads, discover, pipeline, customers, jobs, field_ops, fields (field boundary map), finance, intel (EFB satellite risk map / risk map / Intelligence Hub), alerts, automation. For requests like "show me Marion P1 leads" or "hazelnut treat-now leads", navigate to "leads" and set the matching filters.',
     input_schema: {
       type: 'object',
-      properties: { page: { type: 'string', enum: Object.keys(PAGES) } },
+      properties: {
+        page: { type: 'string', enum: Object.keys(PAGES) },
+        filters: {
+          type: 'object',
+          description: 'Optional filters applied on the leads page.',
+          properties: {
+            search: { type: 'string' },
+            county: { type: 'string' },
+            city: { type: 'string' },
+            crop: { type: 'string' },
+            vertical: { type: 'string', enum: ['ag_spray', 'insurance', 'real_estate', 'construction'] },
+            priority_tier: { type: 'string', enum: ['P1', 'P2', 'P3', 'P4'] },
+            action_recommendation: { type: 'string', enum: ['TREAT_NOW', 'SCOUT_NOW', 'CONTACT_NOW', 'MONITOR'] },
+            loi_status: { type: 'string', enum: LOI_STAGES },
+            min_priority_score: { type: 'number' },
+          },
+        },
+      },
       required: ['page'],
+    },
+  },
+  {
+    name: 'query_alerts',
+    description: 'List the most recent alerts (TREAT_NOW / new P1 / system). Use for "any new alerts / what needs attention".',
+    input_schema: {
+      type: 'object',
+      properties: { unread_only: { type: 'boolean' }, limit: { type: 'number', description: 'default 10, max 30' } },
+      required: [],
     },
   },
   // ── Actions (staff only) ─────────────────────────────────────────────────
@@ -307,12 +341,31 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       return error ? { error: error.message } : data
     }
 
-    // ── navigation ─────────────────────────────────────────────────────────
+    case 'query_alerts': {
+      let q = supabase
+        .from('alerts')
+        .select('created_at,type,severity,title,body,read')
+        .order('created_at', { ascending: false })
+        .limit(cap(args.limit, 10, 30))
+      if (args.unread_only) q = q.eq('read', false)
+      const { data, error } = await q
+      return error ? { error: error.message } : data
+    }
+
+    // ── navigation (optionally with leads filters) ──────────────────────────
     case 'navigate': {
-      const path = PAGES[args.page]
+      let path = PAGES[args.page]
       if (!path) return { error: `Unknown page "${args.page}".` }
+      const f = args.filters
+      if (path === '/leads' && f && typeof f === 'object') {
+        const qs = new URLSearchParams()
+        for (const k of ['search', 'county', 'city', 'crop', 'vertical', 'priority_tier', 'action_recommendation', 'loi_status', 'min_priority_score'])
+          if (f[k] != null && f[k] !== '') qs.set(k, String(f[k]))
+        const s = qs.toString()
+        if (s) path += `?${s}`
+      }
       ctx.actions.push({ type: 'navigate', path })
-      return { ok: true, navigatedTo: args.page }
+      return { ok: true, navigatedTo: path }
     }
 
     // ── actions (staff only) ────────────────────────────────────────────────
@@ -326,12 +379,14 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       if (r.lead.loi_status === args.loi_status) {
         return { ok: true, noop: true, lead: name, loi_status: args.loi_status, message: `${name} is already ${args.loi_status}.` }
       }
+      const prev = r.lead.loi_status
       const patch: any = { loi_status: args.loi_status }
       if (args.loi_status === 'loi_sent') patch.loi_sent_at = new Date().toISOString()
       if (args.loi_status === 'loi_signed') patch.loi_signed_at = new Date().toISOString()
       const { error } = await supabase.from('leads').update(patch).eq('id', r.lead.id)
       if (error) return { error: error.message }
       ctx.actions.push({ type: 'refresh' })
+      ctx.undo = { label: `${name}'s stage (back to ${prev})`, tool: '_revert_lead', args: { id: r.lead.id, patch: { loi_status: prev } } }
       return { ok: true, lead: name, loi_status: args.loi_status }
     }
     case 'tag_lead': {
@@ -349,6 +404,7 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       }
       const { error } = await supabase.from('leads').update({ tags: merged }).eq('id', r.lead.id)
       if (error) return { error: error.message }
+      ctx.undo = { label: `tags on ${name}`, tool: '_revert_lead', args: { id: r.lead.id, patch: { tags: existing } } }
       return { ok: true, lead: name, tags: merged }
     }
     case 'convert_lead_to_customer': {
@@ -378,6 +434,7 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
         .single()
       if (error) return { error: error.message }
       ctx.actions.push({ type: 'refresh' })
+      if (data?.id) ctx.undo = { label: `customer ${l.business_name ?? l.owner_name}`, tool: '_delete_customer', args: { id: data.id } }
       return { ok: true, customer_id: data?.id, name: l.business_name ?? l.owner_name }
     }
     case 'run_operation': {
@@ -418,6 +475,24 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       } catch (err: any) {
         return { error: String(err?.message ?? err) }
       }
+    }
+
+    // ── internal undo operations (not model-callable) ───────────────────────
+    case '_revert_lead': {
+      if (!ctx.isStaff) return staffOnly
+      if (!args.id || !args.patch) return { error: 'bad undo args' }
+      const { error } = await supabase.from('leads').update(args.patch).eq('id', args.id)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true }
+    }
+    case '_delete_customer': {
+      if (!ctx.isStaff) return staffOnly
+      if (!args.id) return { error: 'bad undo args' }
+      const { error } = await supabase.from('customers').delete().eq('id', args.id)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true }
     }
 
     default:
