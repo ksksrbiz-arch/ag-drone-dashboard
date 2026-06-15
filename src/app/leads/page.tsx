@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, type Lead, type Vertical, type LOIStatus } from '@/lib/supabase'
+import { setSidekickFocus } from '@/lib/assistant/context'
 
 const VERTICALS: { value: Vertical | 'all'; label: string }[] = [
   { value: 'all',         label: 'All Verticals' },
@@ -83,6 +84,14 @@ export default function LeadsPage() {
     setRawNotes('')
     setStructured(null)
   }, [selected?.id])
+
+  // Publish the open lead to Sidekick (contextual "this lead").
+  useEffect(() => {
+    setSidekickFocus(
+      selected ? { kind: 'lead', id: selected.id, name: selected.business_name ?? selected.owner_name } : null
+    )
+    return () => setSidekickFocus(null)
+  }, [selected])
 
   async function structureNotes() {
     if (!rawNotes.trim() || notesBusy || !selected) return

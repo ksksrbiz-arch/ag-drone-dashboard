@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { getSidekickFocus } from '@/lib/assistant/context'
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -61,7 +62,10 @@ export default function Sidekick() {
       const res = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({
+          messages: next,
+          context: { path: pathname, focus: getSidekickFocus() },
+        }),
       })
       const json = await res.json()
       if (!res.ok || json.ok === false) {
