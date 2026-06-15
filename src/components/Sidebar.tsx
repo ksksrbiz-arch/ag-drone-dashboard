@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { BUSINESS, BRAND_NAME } from '@/lib/business'
+import { supabase } from '@/lib/supabase'
 
 const navItems = [
   { href: '/',           label: 'Overview',   icon: '📊' },
@@ -61,10 +62,21 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function Footer() {
+  async function signOut() {
+    await supabase.auth.signOut()
+    window.location.assign('/login')
+  }
   return (
     <div className="px-5 py-4 border-t border-white/10">
       <div className="text-slate-400 text-xs">{[BUSINESS.city, BUSINESS.equipment].filter(Boolean).join(' · ')}</div>
       {BUSINESS.signer && <div className="text-slate-500 text-xs mt-0.5">{BUSINESS.signer} — Field Ops</div>}
+      <button
+        onClick={signOut}
+        className="tap mt-3 inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white transition-colors"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        Sign out
+      </button>
     </div>
   )
 }
@@ -73,6 +85,9 @@ const PANEL = 'bg-gradient-to-b from-slate-900 to-slate-950'
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
+  const pathname = usePathname()
+  // The login / auth pages render standalone (no app chrome).
+  if (pathname.startsWith('/login') || pathname.startsWith('/auth')) return null
   return (
     <>
       {/* Mobile top bar */}
