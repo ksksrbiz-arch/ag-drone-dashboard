@@ -55,17 +55,24 @@ async function knowledgeIndexNote(): Promise<string> {
   }
 }
 
-async function resolveIsStaff(): Promise<boolean> {
+interface Actor {
+  isStaff: boolean
+  userId: string | null
+  email: string | null
+}
+
+async function resolveActor(): Promise<Actor> {
   try {
     const supabase = await createSupabaseServer()
     const {
       data: { user },
     } = await supabase.auth.getUser()
-    if (!user) return false
+    if (!user) return { isStaff: false, userId: null, email: null }
     const { data } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-    return data?.role === 'owner' || data?.role === 'partner'
+    const isStaff = data?.role === 'owner' || data?.role === 'partner'
+    return { isStaff, userId: user.id, email: user.email ?? null }
   } catch {
-    return false
+    return { isStaff: false, userId: null, email: null }
   }
 }
 
@@ -78,7 +85,8 @@ export async function POST(req: NextRequest) {
   }
   // ── Undo path: client clicked Undo → run the stored inverse op directly. ──
   if (body?.undo?.tool) {
-    const ctx: ToolContext = { isStaff: await resolveIsStaff(), actions: [] }
+    const actor = await resolveActor()
+    const ctx: ToolContext = { isStaff: actor.isStaff, actions: [], actorId: actor.userId, actorEmail: actor.email }
     const result: any = await runTool(String(body.undo.tool), body.undo.args ?? {}, ctx)
     if (result?.error) return NextResponse.json({ ok: true, reply: result.error, actions: ctx.actions })
     return NextResponse.json({
@@ -119,11 +127,13 @@ export async function POST(req: NextRequest) {
     contextNote += `\n\nThe user's last message is open-ended. Do NOT repeat any previous answer. Propose 2-3 concrete next actions you can take right now (navigate somewhere useful, pull a specific report, or act on leads/jobs/fields) and ask which they'd like.`
   }
 
-  const [isStaff, kbNote] = await Promise.all([resolveIsStaff(), knowledgeIndexNote()])
+  const [actor, kbNote] = await Promise.all([resolveActor(), knowledgeIndexNote()])
   const ctx: ToolContext = {
-    isStaff,
+    isStaff: actor.isStaff,
     actions: [],
     focusLeadId: focus?.kind === 'lead' ? String(focus.id) : null,
+    actorId: actor.userId,
+    actorEmail: actor.email,
   }
   const system = SYSTEM + kbNote + contextNote
 

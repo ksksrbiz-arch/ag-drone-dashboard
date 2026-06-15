@@ -38,6 +38,7 @@ const TOOL_STATUS: Record<string, string> = {
   create_job: 'Creating the job…',
   query_fields: 'Checking mapped fields…',
   query_alerts: 'Checking alerts…',
+  get_recent_activity: 'Reviewing recent activity…',
   search_knowledge: 'Searching the knowledge base…',
   list_knowledge: 'Checking what reference docs exist…',
   add_to_knowledge: 'Saving that to the knowledge base…',

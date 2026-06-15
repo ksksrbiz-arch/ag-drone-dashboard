@@ -32,6 +32,9 @@ export interface ToolContext {
   focusLeadId?: string | null
   /** Set by a reversible write so the UI can offer an Undo. */
   undo?: UndoSpec | null
+  /** Who is driving — used to attribute audit-log entries. */
+  actorId?: string | null
+  actorEmail?: string | null
 }
 
 const LEAD_COLS =
@@ -240,6 +243,12 @@ export const TOOLS = [
       properties: { unread_only: { type: 'boolean' }, limit: { type: 'number', description: 'default 10, max 30' } },
       required: [],
     },
+  },
+  {
+    name: 'get_recent_activity',
+    description:
+      'List the most recent actions YOU (the assistant) have taken on the user\'s behalf — stage changes, tags, conversions, jobs, customer updates, knowledge saves. Use for "what did you change / do today", "what have you done", "recent activity".',
+    input_schema: { type: 'object', properties: { limit: { type: 'number', description: 'default 10, max 30' } }, required: [] },
   },
   // ── Knowledge base — staff-curated reference material ────────────────────
   {
@@ -513,7 +522,59 @@ async function ranRecently(supabase: any, table: string, secs: number): Promise<
 
 const staffOnly = { error: 'That action needs owner/partner access — you have read-only access.' }
 
+// Write tools whose successful runs we record in the audit log.
+const MUTATING = new Set([
+  'update_lead_stage', 'tag_lead', 'convert_lead_to_customer', 'run_operation',
+  'bulk_tag_leads', 'bulk_update_stage', 'add_to_knowledge',
+  'update_job_status', 'create_job', 'update_customer_status', 'add_customer_note',
+])
+
+/** Human-readable one-liner for an audit-log entry. */
+function summarizeAction(name: string, _args: Args, r: any): string {
+  switch (name) {
+    case 'update_lead_stage': return `Set ${r.lead}'s stage to ${r.loi_status}`
+    case 'tag_lead': return `Tagged ${r.lead} (${(r.tags ?? []).join(', ')})`
+    case 'convert_lead_to_customer': return `Converted ${r.name} to a customer`
+    case 'run_operation': return `Ran ${r.operation}`
+    case 'bulk_tag_leads': return `Tagged ${r.tagged} leads (${(r.tags ?? []).join(', ')})`
+    case 'bulk_update_stage': return `Set ${r.updated} leads to ${r.loi_status}`
+    case 'add_to_knowledge': return `${r.updated ? 'Updated' : 'Saved'} knowledge doc "${r.title}" in ${r.folder}`
+    case 'update_job_status': return `Set job ${r.job} to ${r.status}`
+    case 'create_job': return `Created job "${r.job}" (${r.status})`
+    case 'update_customer_status': return `Set ${r.customer} to ${r.status}`
+    case 'add_customer_note': return `Added a note to ${r.customer}`
+    default: return `Ran ${name}`
+  }
+}
+
+/** Best-effort audit log — never blocks or throws into the tool result. */
+async function logAction(ctx: ToolContext, name: string, args: Args, result: any) {
+  try {
+    await getAdminClient()
+      .from('assistant_actions')
+      .insert({
+        actor_id: ctx.actorId ?? null,
+        actor_email: ctx.actorEmail ?? null,
+        tool: name,
+        summary: summarizeAction(name, args, result),
+        detail: { args, result },
+      })
+  } catch {
+    /* logging is non-critical */
+  }
+}
+
 export async function runTool(name: string, args: Args, ctx: ToolContext): Promise<unknown> {
+  const result = await execTool(name, args, ctx)
+  // Record successful, non-noop writes for the audit trail.
+  if (MUTATING.has(name)) {
+    const r = result as any
+    if (r && r.ok && !r.noop && !r.error) await logAction(ctx, name, args, r)
+  }
+  return result
+}
+
+async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unknown> {
   const supabase = getAdminClient()
 
   switch (name) {
@@ -647,6 +708,16 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       if (args.unread_only) q = q.eq('read', false)
       const { data, error } = await q
       return error ? { error: error.message } : data
+    }
+
+    case 'get_recent_activity': {
+      const { data, error } = await supabase
+        .from('assistant_actions')
+        .select('tool, summary, actor_email, created_at')
+        .order('created_at', { ascending: false })
+        .limit(cap(args.limit, 10, 30))
+      if (error) return { error: error.message }
+      return (data ?? []).map((a: any) => ({ summary: a.summary, by: a.actor_email, at: a.created_at }))
     }
 
     // ── knowledge base ──────────────────────────────────────────────────────
