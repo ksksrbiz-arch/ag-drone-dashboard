@@ -93,6 +93,21 @@ export default function LeadsPage() {
     return () => setSidekickFocus(null)
   }, [selected])
 
+  // Deep-link: apply filters passed in the URL (e.g. Sidekick "show me Marion P1s").
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    const af: Record<string, any> = {}
+    for (const k of ['county', 'city', 'crop', 'vertical', 'priority_tier', 'action_recommendation', 'loi_status']) {
+      const v = p.get(k)
+      if (v) af[k] = v
+    }
+    const mps = p.get('min_priority_score')
+    if (mps && !Number.isNaN(Number(mps))) af.min_priority_score = Number(mps)
+    const q = p.get('search')
+    if (q) setSearch(q)
+    if (Object.keys(af).length) setAiFilter(af)
+  }, [])
+
   async function structureNotes() {
     if (!rawNotes.trim() || notesBusy || !selected) return
     setNotesBusy(true)
