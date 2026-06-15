@@ -62,6 +62,16 @@ const cap = (n: unknown, def: number, max: number) => {
   return Math.min(Math.max(1, v), max)
 }
 
+/** Return a window of `len` chars around the first query term, for snippets. */
+function excerptAround(text: string, query: string, len: number): string {
+  if (text.length <= len) return text
+  const term = (query.split(/\s+/).find(w => w.length > 2) ?? query).toLowerCase()
+  const at = text.toLowerCase().indexOf(term)
+  if (at < 0) return text.slice(0, len) + '…'
+  const start = Math.max(0, at - Math.floor(len / 3))
+  return (start > 0 ? '…' : '') + text.slice(start, start + len) + (start + len < text.length ? '…' : '')
+}
+
 export const TOOLS = [
   {
     name: 'get_kpis',
@@ -188,6 +198,26 @@ export const TOOLS = [
       properties: { unread_only: { type: 'boolean' }, limit: { type: 'number', description: 'default 10, max 30' } },
       required: [],
     },
+  },
+  // ── Knowledge base — staff-curated reference material ────────────────────
+  {
+    name: 'search_knowledge',
+    description:
+      "Search the team's knowledge base — uploaded files, folders, and notes (pricing sheets, SOPs, call scripts, agronomy references, contract terms). Use this whenever the user asks a company-specific or reference question whose answer is NOT in the leads/jobs/fields data (e.g. \"what's our per-acre rate\", \"what's the EFB treatment protocol\", \"how do we pitch hazelnut growers\"). Returns matching documents with excerpts; answer from them and don't invent.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'what to look for' },
+        folder: { type: 'string', description: 'optional: restrict to one folder' },
+        limit: { type: 'number', description: 'default 4, max 8' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'list_knowledge',
+    description: 'List what is in the knowledge base — folders and document titles. Use when the user asks what reference material / files / docs are available, or to discover what to search.',
+    input_schema: { type: 'object', properties: { folder: { type: 'string' } }, required: [] },
   },
   // ── Actions (staff only) ─────────────────────────────────────────────────
   {
@@ -383,6 +413,49 @@ export async function runTool(name: string, args: Args, ctx: ToolContext): Promi
       if (args.unread_only) q = q.eq('read', false)
       const { data, error } = await q
       return error ? { error: error.message } : data
+    }
+
+    // ── knowledge base ──────────────────────────────────────────────────────
+    case 'search_knowledge': {
+      const query = String(args.query ?? '').trim()
+      if (!query) return { error: 'No search query.' }
+      const limit = cap(args.limit, 4, 8)
+      const cols = 'id,title,folder,content'
+      // Full-text first (handles word stems), then ilike fallback for partials.
+      let rows: any[] = []
+      let q1 = supabase.from('knowledge_documents').select(cols).textSearch('fts', query, { type: 'websearch' }).limit(limit)
+      if (args.folder) q1 = q1.eq('folder', args.folder)
+      const r1 = await q1
+      if (!r1.error && r1.data?.length) rows = r1.data
+      if (!rows.length) {
+        let q2 = supabase
+          .from('knowledge_documents')
+          .select(cols)
+          .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
+          .limit(limit)
+        if (args.folder) q2 = q2.eq('folder', args.folder)
+        const r2 = await q2
+        if (r2.error) return { error: r2.error.message }
+        rows = r2.data ?? []
+      }
+      if (!rows.length) return { results: [], message: 'Nothing in the knowledge base matches that.' }
+      return {
+        results: rows.map((d: any) => ({
+          title: d.title,
+          folder: d.folder,
+          excerpt: excerptAround(String(d.content ?? ''), query, 700),
+        })),
+      }
+    }
+    case 'list_knowledge': {
+      let q = supabase.from('knowledge_documents').select('title,folder').order('folder').order('title').limit(200)
+      if (args.folder) q = q.eq('folder', args.folder)
+      const { data, error } = await q
+      if (error) return { error: error.message }
+      const byFolder: Record<string, string[]> = {}
+      for (const d of (data ?? []) as any[]) (byFolder[d.folder] ||= []).push(d.title)
+      const folders = Object.entries(byFolder).map(([folder, titles]) => ({ folder, documents: titles }))
+      return { folders, total: data?.length ?? 0 }
     }
 
     // ── navigation (optionally with leads filters) ──────────────────────────
