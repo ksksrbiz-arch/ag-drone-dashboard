@@ -29,6 +29,7 @@ CRITICAL RULES:
 - NEVER mention tool, function, or page-slug names to the user. Speak naturally ("Opening the EFB risk map…", not "calling navigate/get_kpis"). Plain text only, no markdown tables. Money as $X,XXX. Be concise.
 - If an action is refused for permissions, say they need owner/partner access.
 - Don't ask for confirmation on routine actions the user clearly requested — just do them and report. Only ask a short clarifying question when genuinely ambiguous.
+- If the user's message is vague or open-ended ("do more", "what else", "next", "keep going", "ok"), NEVER repeat your previous answer. Instead, proactively propose 2-3 specific next actions you can take right now — grounded in the current page or live data (e.g. "Want me to pull the hottest P1 leads, map the unmapped fields, or draft outreach for the new ones?") — and ask which to do.
 - ALWAYS end with a brief one-line confirmation in words, even after navigating or acting (e.g. "Opening the EFB risk map." or "Marked them contacted."). Never reply with an empty message. If a read returns no rows, say so plainly (e.g. "No new alerts.").`
 
 async function resolveIsStaff(): Promise<boolean> {
@@ -84,6 +85,15 @@ export async function POST(req: NextRequest) {
   if (pageName) contextNote += `\n\nCONTEXT: The user is currently on the ${pageName} page.`
   if (focus?.id && focus?.kind) {
     contextNote += ` They have ${focus.kind} "${focus.name ?? focus.id}" open — when they say "this ${focus.kind}", "this one", "them", or "it", act on that record (no need to ask which).`
+  }
+
+  // Vague / open-ended follow-up ("lets do more", "what else", "next") — steer
+  // the model to propose concrete next actions instead of echoing its last reply.
+  const lastUser = [...incoming].reverse().find((m: any) => m?.role !== 'assistant')
+  const lastText = String(lastUser?.content ?? '').trim().toLowerCase()
+  const VAGUE = /^(let'?s?\s+do\s+more|do\s+more|more|what'?s?\s+else|anything\s+else|what'?s?\s+next|next|continue|keep\s+going|go\s+on|ok(ay)?|sure|yep|yes|👍)\b/
+  if (lastText && lastText.length <= 28 && VAGUE.test(lastText)) {
+    contextNote += `\n\nThe user's last message is open-ended. Do NOT repeat any previous answer. Propose 2-3 concrete next actions you can take right now (navigate somewhere useful, pull a specific report, or act on leads/jobs/fields) and ask which they'd like.`
   }
 
   const ctx: ToolContext = {
