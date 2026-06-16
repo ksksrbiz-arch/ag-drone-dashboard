@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { supabase, type Lead, type Vertical, type LOIStatus } from '@/lib/supabase'
+import { supabase, type Lead, type Vertical, type LOIStatus, type LeadScoreHistory } from '@/lib/supabase'
 import { setSidekickFocus } from '@/lib/assistant/context'
 
 const VERTICALS: { value: Vertical | 'all'; label: string }[] = [
@@ -66,6 +66,7 @@ export default function LeadsPage() {
   const [rawNotes, setRawNotes] = useState('')
   const [structured, setStructured] = useState<any>(null)
   const [notesBusy, setNotesBusy] = useState(false)
+  const [history, setHistory] = useState<LeadScoreHistory[]>([])
 
   useEffect(() => {
     supabase
@@ -83,6 +84,19 @@ export default function LeadsPage() {
     setDraft(null)
     setRawNotes('')
     setStructured(null)
+    // Load the selected lead's priority history for the sparkline (v4). Empty
+    // until the score-history table is migrated + a couple of runs have landed.
+    if (!selected?.id) {
+      setHistory([])
+      return
+    }
+    supabase
+      .from('lead_score_history')
+      .select('*')
+      .eq('lead_id', selected.id)
+      .order('captured_at', { ascending: true })
+      .limit(30)
+      .then(({ data }) => setHistory((data ?? []) as LeadScoreHistory[]))
   }, [selected?.id])
 
   // Publish the open lead to Sidekick (contextual "this lead").
@@ -478,6 +492,15 @@ export default function LeadsPage() {
                 {selected.priority_explanation && (
                   <p className="text-xs text-slate-400 mb-1">{selected.priority_explanation}</p>
                 )}
+                {history.length >= 2 && (
+                  <div className="mt-1 mb-2">
+                    <div className="flex items-center justify-between text-xs text-slate-400 mb-0.5">
+                      <span>Priority history</span>
+                      <span>{history.length} runs</span>
+                    </div>
+                    <Sparkline points={history.map(h => h.score ?? 0)} />
+                  </div>
+                )}
                 <Detail label="Data Completeness" value={selected.data_completeness != null ? `${selected.data_completeness}%` : null} />
                 <Detail label="Enrichment" value={selected.enrichment_status} />
                 <Detail label="AI Confidence" value={selected.enrichment_confidence != null ? `${Math.round(selected.enrichment_confidence * 100)}%` : null} />
@@ -670,6 +693,36 @@ function Detail({ label, value }: { label: string; value: string | number | null
       <span className="text-slate-400">{label}</span>
       <span className="text-slate-700 font-medium text-right max-w-[150px] truncate">{String(value)}</span>
     </div>
+  )
+}
+
+// Minimal inline-SVG sparkline of a lead's priority score over time (v4).
+function Sparkline({ points }: { points: number[] }) {
+  if (points.length < 2) return null
+  const w = 200
+  const h = 36
+  const pad = 3
+  const min = Math.min(...points)
+  const max = Math.max(...points)
+  const range = max - min || 1
+  const step = (w - pad * 2) / (points.length - 1)
+  const coords = points.map((p, i) => {
+    const x = pad + i * step
+    const y = h - pad - ((p - min) / range) * (h - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  const rising = points[points.length - 1] >= points[0]
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block">
+      <polyline
+        points={coords.join(' ')}
+        fill="none"
+        stroke={rising ? '#16a34a' : '#ef4444'}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 

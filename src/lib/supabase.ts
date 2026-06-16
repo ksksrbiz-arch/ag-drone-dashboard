@@ -117,6 +117,19 @@ export interface Lead {
   next_best_action?: string | null
   talking_points?: string[] | null
   last_scored_at?: string | null
+  // ─── v4: pipeline-stage timing (follow-up SLAs) ──────────────────────────
+  stage_changed_at?: string | null
+}
+
+/** One snapshot of a lead's priority score (v4 score-history timeline). */
+export interface LeadScoreHistory {
+  id: string
+  lead_id: string
+  run_id: string | null
+  score: number | null
+  tier: PriorityTier | null
+  delta: number | null
+  captured_at: string
 }
 
 export interface EnrichmentRun {
