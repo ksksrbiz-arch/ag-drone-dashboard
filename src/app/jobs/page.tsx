@@ -87,7 +87,7 @@ export default function JobsPage() {
   const outstanding   = totalInvoiced - totalPaid
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto animate-fade">
+    <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto animate-fade">
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Job Tracker</h1>
         <p className="text-slate-500 text-sm mt-0.5">All flights, quotes, and invoices</p>

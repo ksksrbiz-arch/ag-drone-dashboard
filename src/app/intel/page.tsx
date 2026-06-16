@@ -180,7 +180,7 @@ export default function IntelPage() {
   )
 
   return (
-    <div className="p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade space-y-6">
+    <div className="p-4 sm:p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">EFB Intelligence Hub</h1>

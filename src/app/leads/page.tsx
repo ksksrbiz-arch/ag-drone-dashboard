@@ -110,6 +110,16 @@ export default function LeadsPage() {
     return () => setSidekickFocus(null)
   }, [selected])
 
+  // On phones the detail panel stacks below the list — bring it into view when
+  // a lead is opened so the tap doesn't feel like nothing happened.
+  useEffect(() => {
+    if (selected && typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
+      requestAnimationFrame(() =>
+        document.getElementById('lead-detail-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      )
+    }
+  }, [selected?.id])
+
   // Deep-link: apply filters passed in the URL (e.g. Sidekick "show me Marion P1s").
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
@@ -296,7 +306,7 @@ export default function LeadsPage() {
   }, [leads, vertical, loiStatus, search, sortBy, aiFilter])
 
   return (
-    <div className="p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade">
+    <div className="p-4 sm:p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Lead Database</h1>
@@ -369,7 +379,7 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      <div className="flex gap-5">
+      <div className="flex flex-col lg:flex-row gap-5">
         {/* Table */}
         <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
           {loading ? (
@@ -468,7 +478,7 @@ export default function LeadsPage() {
 
         {/* Detail panel */}
         {selected && (
-          <div className="w-72 shrink-0 bg-white rounded-xl border border-slate-200 shadow-card p-5 space-y-4 self-start">
+          <div id="lead-detail-panel" className="w-full lg:w-72 lg:shrink-0 bg-white rounded-xl border border-slate-200 shadow-card p-5 space-y-4 self-start scroll-mt-20">
             <div className="flex items-start justify-between">
               <h3 className="font-semibold text-slate-900 text-sm leading-tight">
                 {selected.business_name ?? selected.owner_name ?? 'Lead Detail'}

@@ -56,7 +56,7 @@ export default function PipelinePage() {
     .reduce((s, l) => s + (l.est_annual_revenue ?? 0), 0)
 
   return (
-    <div className="p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade">
+    <div className="p-4 sm:p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">LOI Pipeline</h1>

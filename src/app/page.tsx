@@ -84,7 +84,7 @@ export default function OverviewPage() {
 
   if (loading) {
     return (
-      <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
+      <div className="p-4 sm:p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
         <div className="h-7 w-56 skeleton" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-24 skeleton" />)}
@@ -102,7 +102,7 @@ export default function OverviewPage() {
   const k = kpis!
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-fade">
+    <div className="p-4 sm:p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-fade">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Operations Overview</h1>
         <p className="text-slate-500 text-sm mt-0.5">{[BRAND_NAME, BUSINESS.city].filter(Boolean).join(' · ')}</p>
