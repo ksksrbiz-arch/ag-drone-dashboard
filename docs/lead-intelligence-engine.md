@@ -112,6 +112,18 @@ ever sent automatically**. Each lead is queued at most once while a draft is ope
 
 ---
 
+## Configurable scoring (Settings)
+
+The **Settings** tab (`/settings`, `GET|PUT /api/scoring-config`) tunes the
+priority engine without code: per-factor **weights** (ag-spray vs. non-ag) and
+the **P1–P4 tier thresholds**, stored in a single-row `scoring_config` table.
+It's **opt-in and no-op by default** — until an override is saved the engine
+uses its built-in defaults, so scoring is unchanged. `computePriority` takes an
+optional `ScoringConfig`; the engine loads it once per run. Weights are relative
+(auto-normalized), and **Reset to defaults** clears the overrides.
+
+---
+
 ## Reliability & ops (new in v3)
 
 - **Per-lead retries with backoff** on transient research failures (`ENRICHMENT_RETRIES`, default 2).

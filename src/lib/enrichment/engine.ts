@@ -11,7 +11,8 @@ import {
   STALE_DAYS,
 } from './config'
 import { computeCompleteness } from './completeness'
-import { computePriority, type PrioritySignals } from './priority'
+import { computePriority, type PrioritySignals, type ScoringConfig } from './priority'
+import { loadScoringConfig } from './scoringConfig'
 import { researchLead } from './research'
 import { apolloEnrich } from './apollo'
 import type {
@@ -94,8 +95,11 @@ export async function runEnrichment(opts: RunOptions): Promise<EngineRunSummary>
     /* audit table not yet migrated — keep going */
   }
 
+  // Opt-in scoring overrides (no-op until configured). Loaded once per run.
+  const scoringConfig = await loadScoringConfig(supabase)
+
   const outcomes = await mapPool(leads, CONCURRENCY, lead =>
-    enrichOne(supabase, lead, jobSignals.get(lead.id) ?? { jobCount: 0, paidJobs: 0 })
+    enrichOne(supabase, lead, jobSignals.get(lead.id) ?? { jobCount: 0, paidJobs: 0 }, scoringConfig)
   )
 
   const leadsEnriched = outcomes.filter(o => o.ok).length
@@ -243,7 +247,8 @@ async function loadJobSignals(
 async function enrichOne(
   supabase: ReturnType<typeof getAdminClient>,
   lead: Lead,
-  signals: PrioritySignals
+  signals: PrioritySignals,
+  scoringConfig: ScoringConfig = {}
 ): Promise<LeadEnrichmentOutcome & { _aiCalls?: number; _aiTokens?: number }> {
   const fieldsUpdated: string[] = []
   let aiCalls = 0
@@ -320,7 +325,7 @@ async function enrichOne(
 
     // Always recompute the algorithmic layer (with relationship signals).
     const completeness = computeCompleteness(merged)
-    const priority = computePriority(merged, signals)
+    const priority = computePriority(merged, signals, scoringConfig)
     const { delta, trend } = momentum(lead.priority_score, priority.score)
     const became_p1 = lead.priority_tier !== 'P1' && priority.tier === 'P1'
 
@@ -370,7 +375,7 @@ async function enrichOne(
   } catch (err: any) {
     // Mark failed but still try to land an algorithmic score + momentum.
     try {
-      const priority = computePriority(lead, signals)
+      const priority = computePriority(lead, signals, scoringConfig)
       const { delta, trend } = momentum(lead.priority_score, priority.score)
       await applyPatch(supabase, lead.id, {
         enrichment_status: 'failed',
