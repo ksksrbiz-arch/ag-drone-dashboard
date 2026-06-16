@@ -112,9 +112,9 @@ ever sent automatically**. Each lead is queued at most once while a draft is ope
 
 ---
 
-## Configurable scoring (Settings)
+## Configurable scoring (Scoring tab)
 
-The **Settings** tab (`/settings`, `GET|PUT /api/scoring-config`) tunes the
+The **Scoring** tab (`/scoring`, `GET|PUT /api/scoring-config`) tunes the
 priority engine without code: per-factor **weights** (ag-spray vs. non-ag) and
 the **P1–P4 tier thresholds**, stored in a single-row `scoring_config` table.
 It's **opt-in and no-op by default** — until an override is saved the engine
