@@ -46,6 +46,8 @@ const TOOL_STATUS: Record<string, string> = {
   query_fields: 'Checking mapped fields…',
   get_fields_summary: 'Totaling the acreage…',
   query_alerts: 'Checking alerts…',
+  log_activity: 'Logging that…',
+  get_activity: 'Pulling up the history…',
   get_recent_activity: 'Reviewing recent activity…',
   search_knowledge: 'Searching the knowledge base…',
   list_knowledge: 'Checking what reference docs exist…',

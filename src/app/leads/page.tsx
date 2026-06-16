@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, type Lead, type Vertical, type LOIStatus, type LeadScoreHistory } from '@/lib/supabase'
 import { setSidekickFocus } from '@/lib/assistant/context'
+import { ActivityTimeline } from '@/components/ActivityTimeline'
 
 const VERTICALS: { value: Vertical | 'all'; label: string }[] = [
   { value: 'all',         label: 'All Verticals' },
@@ -537,6 +538,8 @@ export default function LeadsPage() {
               <Detail label="Email" value={selected.email} />
               <Detail label="Assigned" value={selected.assigned_to} />
             </Section>
+
+            <ActivityTimeline entityType="lead" entityId={selected.id} />
 
             <Section title="Property">
               <Detail label="Address" value={selected.address_physical} />

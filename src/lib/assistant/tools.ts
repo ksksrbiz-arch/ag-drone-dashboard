@@ -244,6 +244,37 @@ export const TOOLS = [
     },
   },
   {
+    name: 'log_activity',
+    description:
+      'Log an activity to a record\'s timeline — a call, email, SMS, meeting, or note. Use for "log a call with X: …", "note that …", "record that I emailed …". Identify the record by entity_type plus a name search (or the lead currently open). Staff only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        entity_type: { type: 'string', enum: ['lead', 'customer', 'job'], description: 'what the activity is about' },
+        search: { type: 'string', description: 'business/owner/customer/job name' },
+        id: { type: 'string', description: 'record id if known' },
+        kind: { type: 'string', enum: ['note', 'call', 'email', 'sms', 'meeting'], description: 'default note' },
+        body: { type: 'string', description: 'what happened' },
+      },
+      required: ['entity_type', 'body'],
+    },
+  },
+  {
+    name: 'get_activity',
+    description:
+      'Get the recent activity timeline for one record (lead, customer, or job) — calls, emails, notes, stage changes. Use for "what\'s the history with X", "recent activity on …".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        entity_type: { type: 'string', enum: ['lead', 'customer', 'job'] },
+        search: { type: 'string' },
+        id: { type: 'string' },
+        limit: { type: 'number', description: 'default 15, max 50' },
+      },
+      required: ['entity_type'],
+    },
+  },
+  {
     name: 'query_jobs',
     description: 'Search jobs by status. Returns job rows with amounts and schedule.',
     input_schema: {
@@ -615,6 +646,28 @@ async function resolveCustomer(supabase: any, args: Args) {
   return { error: 'Which customer? Give me a name.' }
 }
 
+/** Resolve any timeline entity to { id, name } from id, name search, or focus. */
+async function resolveEntity(
+  supabase: any,
+  entityType: string,
+  args: Args,
+  ctx: ToolContext
+): Promise<{ id?: string; name?: string; error?: string }> {
+  if (entityType === 'lead') {
+    const r = await resolveLead(supabase, { lead_id: args.id, search: args.search }, ctx)
+    return r.error ? { error: r.error } : { id: r.lead.id, name: r.lead.business_name ?? r.lead.owner_name }
+  }
+  if (entityType === 'customer') {
+    const r = await resolveCustomer(supabase, { customer_id: args.id, search: args.search })
+    return r.error ? { error: r.error } : { id: r.customer.id, name: r.customer.business_name ?? r.customer.contact_name }
+  }
+  if (entityType === 'job') {
+    const r = await resolveJob(supabase, { job_id: args.id, search: args.search })
+    return r.error ? { error: r.error } : { id: r.job.id, name: r.job.job_title }
+  }
+  return { error: `Unknown entity type "${entityType}".` }
+}
+
 /** Idempotency cooldown: true if a run row for `table` started within `secs`. */
 async function ranRecently(supabase: any, table: string, secs: number): Promise<boolean> {
   const since = new Date(Date.now() - secs * 1000).toISOString()
@@ -632,7 +685,7 @@ const MUTATING = new Set([
   'update_lead_stage', 'tag_lead', 'convert_lead_to_customer', 'run_operation',
   'bulk_tag_leads', 'bulk_update_stage', 'add_to_knowledge',
   'update_job_status', 'create_job', 'update_customer_status', 'add_customer_note',
-  'create_lead', 'mark_alerts_read',
+  'create_lead', 'mark_alerts_read', 'log_activity',
 ])
 
 /** Human-readable one-liner for an audit-log entry. */
@@ -651,6 +704,7 @@ function summarizeAction(name: string, _args: Args, r: any): string {
     case 'add_customer_note': return `Added a note to ${r.customer}`
     case 'create_lead': return `Created lead "${r.lead}"`
     case 'mark_alerts_read': return `Marked ${r.marked} alert${r.marked === 1 ? '' : 's'} read`
+    case 'log_activity': return `Logged a ${r.kind} on ${r.entity}`
     default: return `Ran ${name}`
   }
 }
@@ -796,6 +850,38 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       if (error) return { error: error.message }
       pushCards(ctx, (data ?? []).slice(0, 6).map(jobCard))
       return data
+    }
+    case 'log_activity': {
+      if (!ctx.isStaff) return staffOnly
+      const body = String(args.body ?? '').trim()
+      if (!body) return { error: 'What happened? Give me the note text.' }
+      const e = await resolveEntity(supabase, args.entity_type, args, ctx)
+      if (e.error) return e
+      const kind = ['note', 'call', 'email', 'sms', 'meeting'].includes(args.kind) ? args.kind : 'note'
+      const { error } = await supabase.from('activities').insert({
+        entity_type: args.entity_type,
+        entity_id: e.id,
+        kind,
+        body,
+        actor_id: ctx.actorId ?? null,
+        actor_email: ctx.actorEmail ?? null,
+      })
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true, entity: e.name, kind, logged: body }
+    }
+    case 'get_activity': {
+      const e = await resolveEntity(supabase, args.entity_type, args, ctx)
+      if (e.error) return e
+      const { data, error } = await supabase
+        .from('activities')
+        .select('kind, body, actor_email, created_at')
+        .eq('entity_type', args.entity_type)
+        .eq('entity_id', e.id)
+        .order('created_at', { ascending: false })
+        .limit(cap(args.limit, 15, 50))
+      if (error) return { error: error.message }
+      return { entity: e.name, activity: data ?? [] }
     }
     case 'get_finance_summary': {
       const { data, error } = await supabase.from('jobs').select('status, quote_amount, invoice_amount, paid_amount').limit(2000)
