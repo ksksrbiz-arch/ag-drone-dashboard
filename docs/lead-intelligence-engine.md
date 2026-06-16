@@ -130,7 +130,7 @@ ever sent automatically**. Each lead is queued at most once while a draft is ope
 | Page | What's new |
 | --- | --- |
 | **Automation** 🤖 | Engine health, coverage KPIs, priority distribution, top leads **with trend + next action**, **Priority Movers**, **Follow-ups Due**, **Heating Up**, Next Best Actions, **Duplicate Leads**, AI tagging, and run history **with token cost**. |
-| **Leads** | Priority column + sort, the Intelligence panel (recommended approach, next best action, talking points, completeness, confidence, **priority sparkline**), and **Refresh intel** per lead. |
+| **Leads** | Priority column + sort, a **Table/Map toggle** (territory map of the filtered leads — click a marker to open its detail), the Intelligence panel (recommended approach, next best action, talking points, completeness, confidence, **priority sparkline**), and **Refresh intel** per lead. |
 
 ---
 
