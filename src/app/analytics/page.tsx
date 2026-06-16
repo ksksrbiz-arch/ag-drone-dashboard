@@ -13,7 +13,7 @@ import {
 } from 'recharts'
 import { supabase, type Lead } from '@/lib/supabase'
 import { BASEMAP_OPTIONS, type Basemap } from '@/lib/map/basemaps'
-import type { ColorBy, MapMode, CountyAgg } from '@/components/intel/LeadMap'
+import type { ColorBy, MapMode, CountyAgg, CountyMetric } from '@/components/intel/LeadMap'
 
 // Leaflet touches `window` — load the map client-side only.
 const LeadMap = dynamic(() => import('@/components/intel/LeadMap'), {
@@ -71,6 +71,7 @@ export default function AnalyticsPage() {
   // Territory-map controls
   const [colorBy, setColorBy] = useState<ColorBy>('priority')
   const [mapMode, setMapMode] = useState<MapMode>('leads')
+  const [countyMetric, setCountyMetric] = useState<CountyMetric>('priority')
   const [basemap, setBasemap] = useState<Basemap>('streets')
 
   const load = useCallback(async () => {
@@ -246,6 +247,16 @@ export default function AnalyticsPage() {
                 <option value="crop">Color: Crop</option>
               </select>
             )}
+            {mapMode === 'counties' && (
+              <select
+                value={countyMetric}
+                onChange={e => setCountyMetric(e.target.value as CountyMetric)}
+                className="tap text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="priority">Color: Avg priority</option>
+                <option value="revenue">Color: Revenue</option>
+              </select>
+            )}
             <select
               value={basemap}
               onChange={e => setBasemap(e.target.value as Basemap)}
@@ -255,7 +266,7 @@ export default function AnalyticsPage() {
             </select>
           </div>
         </div>
-        <LeadMap leads={mapLeads} counties={data.byCounty} mode={mapMode} colorBy={colorBy} basemap={basemap} />
+        <LeadMap leads={mapLeads} counties={data.byCounty} mode={mapMode} colorBy={colorBy} basemap={basemap} countyMetric={countyMetric} />
       </div>
 
       {/* Geographic + vertical breakdowns */}
@@ -274,6 +285,7 @@ export default function AnalyticsPage() {
                     <th className="pb-2 font-medium text-right">Avg</th>
                     <th className="pb-2 font-medium text-right">Signed</th>
                     <th className="pb-2 font-medium text-right">Pipeline</th>
+                    <th className="pb-2 font-medium text-right">Revenue</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -284,6 +296,7 @@ export default function AnalyticsPage() {
                       <td className="py-1.5 text-right text-slate-500">{c.avgPriority ?? '—'}</td>
                       <td className="py-1.5 text-right text-slate-600">{c.signed}</td>
                       <td className="py-1.5 text-right text-slate-500">{c.pipeline ? `$${c.pipeline.toLocaleString()}` : '—'}</td>
+                      <td className="py-1.5 text-right text-slate-700 font-medium">{c.revenue ? `$${c.revenue.toLocaleString()}` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>

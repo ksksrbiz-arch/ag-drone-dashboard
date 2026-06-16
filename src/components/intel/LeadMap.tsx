@@ -27,9 +27,13 @@ export interface CountyAgg {
   signed: number
   avgPriority: number | null
   pipeline: number
+  revenue: number
   lat: number | null
   lon: number | null
 }
+
+/** Which metric colors the county bubbles. */
+export type CountyMetric = 'priority' | 'revenue'
 
 interface LeadMapProps {
   leads: Lead[]
@@ -41,6 +45,16 @@ interface LeadMapProps {
   onSelect?: (lead: Lead) => void
   /** Optional: highlight the currently-selected lead. */
   selectedId?: string | null
+  /** Counties-mode bubble color metric (default 'priority'). */
+  countyMetric?: CountyMetric
+}
+
+function revenueColor(rev: number, max: number): string {
+  if (max <= 0 || rev <= 0) return NO_DATA
+  const f = rev / max
+  if (f >= 0.66) return '#16a34a'
+  if (f >= 0.33) return '#84cc16'
+  return '#facc15'
 }
 
 const NO_DATA = '#64748b'
@@ -108,12 +122,13 @@ const LEGENDS: Record<ColorBy, { label: string; items: [string, string][] }> = {
   crop: { label: 'Colored by crop', items: [] },
 }
 
-export default function LeadMap({ leads, counties, mode, colorBy, basemap, onSelect, selectedId }: LeadMapProps) {
+export default function LeadMap({ leads, counties, mode, colorBy, basemap, onSelect, selectedId, countyMetric = 'priority' }: LeadMapProps) {
   const mapped = useMemo(() => leads.filter(hasCoords), [leads])
   const geoCounties = useMemo(
     () => counties.filter(c => typeof c.lat === 'number' && typeof c.lon === 'number') as (CountyAgg & { lat: number; lon: number })[],
     [counties]
   )
+  const maxRevenue = useMemo(() => Math.max(0, ...geoCounties.map(c => c.revenue)), [geoCounties])
 
   const points = useMemo<[number, number][]>(
     () => (mode === 'counties' ? geoCounties.map(c => [c.lat, c.lon]) : mapped.map(l => [l.lat, l.lon])),
@@ -158,7 +173,7 @@ export default function LeadMap({ leads, counties, mode, colorBy, basemap, onSel
 
         {mode === 'counties' &&
           geoCounties.map(c => {
-            const color = bandColor(c.avgPriority)
+            const color = countyMetric === 'revenue' ? revenueColor(c.revenue, maxRevenue) : bandColor(c.avgPriority)
             return (
               <CircleMarker
                 key={c.county}
@@ -171,7 +186,7 @@ export default function LeadMap({ leads, counties, mode, colorBy, basemap, onSel
                   <br />
                   <span className="text-xs">
                     {c.count} leads · avg {c.avgPriority ?? '—'} · {c.signed} signed
-                    {c.pipeline ? ` · $${c.pipeline.toLocaleString()}/yr` : ''}
+                    {c.revenue ? ` · $${c.revenue.toLocaleString()} collected` : ''}
                   </span>
                 </Tooltip>
               </CircleMarker>
@@ -185,11 +200,16 @@ export default function LeadMap({ leads, counties, mode, colorBy, basemap, onSel
       {!empty && (
         <div className="pointer-events-none absolute bottom-3 left-3 z-[500] rounded-lg bg-slate-900/85 px-3 py-2 text-[11px] text-slate-200 shadow-lg">
           <div className="font-semibold mb-1">
-            {mode === 'counties' ? 'County · avg priority' : LEGENDS[colorBy].label}
+            {mode === 'counties'
+              ? countyMetric === 'revenue' ? 'County · revenue' : 'County · avg priority'
+              : LEGENDS[colorBy].label}
           </div>
           {mode === 'counties' ? (
             <div className="flex items-center gap-2">
-              {[['#4ade80', 'low'], ['#facc15', 'mid'], ['#fb923c', 'high'], ['#ef4444', 'hot']].map(([c, l]) => (
+              {(countyMetric === 'revenue'
+                ? [['#facc15', 'low'], ['#84cc16', 'mid'], ['#16a34a', 'high']]
+                : [['#4ade80', 'low'], ['#facc15', 'mid'], ['#fb923c', 'high'], ['#ef4444', 'hot']]
+              ).map(([c, l]) => (
                 <span key={l} className="flex items-center gap-1">
                   <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: c }} />
                   {l}
