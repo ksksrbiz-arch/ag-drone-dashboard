@@ -86,6 +86,14 @@ AI-cost trends** per run (from `enrichment_runs`), the **pipeline funnel** with
 sign-rate, **priority distribution**, **top crops** by volume + average priority,
 and **jobs/revenue**. Read-only — no migration required.
 
+It also includes a **Territory Map** (`src/components/intel/LeadMap.tsx`, a
+generalized Leaflet map) that plots geocoded leads colored by **priority tier /
+pipeline stage / EFB risk / crop**, or switches to a **county view** — one bubble
+per county at its lead centroid, sized by lead count and colored by average
+priority. Alongside it, **By County** (count, avg priority, signed, pipeline
+value) and **By Vertical** breakdowns turn the geography into numbers. The API
+returns `byCounty` (with centroids) and `byVertical` for these.
+
 ---
 
 ## Outreach queue — the action layer

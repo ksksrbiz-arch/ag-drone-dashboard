@@ -26,7 +26,7 @@ export async function GET() {
       .from('enrichment_runs')
       .select('started_at,leads_processed,leads_enriched,ai_calls,ai_tokens,duration_ms,status')
       .order('started_at', { ascending: true }),
-    supabase.from('leads').select('priority_score,priority_tier,loi_status,primary_crop,enrichment_status'),
+    supabase.from('leads').select('priority_score,priority_tier,loi_status,primary_crop,enrichment_status,county,vertical,est_annual_revenue,lat,lon'),
     supabase.from('jobs').select('status,paid_amount,invoice_amount'),
     supabase.from('customers').select('id', { count: 'exact', head: true }),
   ])
@@ -93,6 +93,46 @@ export async function GET() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 8)
 
+  // ── Geographic: by county (with centroid for the map) and by vertical ─────
+  const countyMap = new Map<string, { count: number; signed: number; sum: number; n: number; pipeline: number; latSum: number; lonSum: number; geoN: number }>()
+  const vertMap = new Map<string, { count: number; signed: number; sum: number; n: number }>()
+  for (const l of leads) {
+    const isSigned = l.loi_status === 'loi_signed'
+    const score = typeof l.priority_score === 'number' ? l.priority_score : null
+
+    const county = (l.county ?? '').trim()
+    if (county) {
+      const e = countyMap.get(county) ?? { count: 0, signed: 0, sum: 0, n: 0, pipeline: 0, latSum: 0, lonSum: 0, geoN: 0 }
+      e.count++
+      if (isSigned) e.signed++
+      if (score != null) { e.sum += score; e.n++ }
+      if (typeof l.est_annual_revenue === 'number') e.pipeline += l.est_annual_revenue
+      if (typeof l.lat === 'number' && typeof l.lon === 'number') { e.latSum += l.lat; e.lonSum += l.lon; e.geoN++ }
+      countyMap.set(county, e)
+    }
+
+    const vertical = l.vertical ?? 'ag_spray'
+    const v = vertMap.get(vertical) ?? { count: 0, signed: 0, sum: 0, n: 0 }
+    v.count++
+    if (isSigned) v.signed++
+    if (score != null) { v.sum += score; v.n++ }
+    vertMap.set(vertical, v)
+  }
+  const byCounty = [...countyMap.entries()]
+    .map(([county, e]) => ({
+      county,
+      count: e.count,
+      signed: e.signed,
+      avgPriority: e.n ? Math.round(e.sum / e.n) : null,
+      pipeline: Math.round(e.pipeline),
+      lat: e.geoN ? e.latSum / e.geoN : null,
+      lon: e.geoN ? e.lonSum / e.geoN : null,
+    }))
+    .sort((a, b) => b.count - a.count)
+  const byVertical = [...vertMap.entries()]
+    .map(([vertical, e]) => ({ vertical, count: e.count, signed: e.signed, avgPriority: e.n ? Math.round(e.sum / e.n) : null }))
+    .sort((a, b) => b.count - a.count)
+
   // ── Jobs / revenue ───────────────────────────────────────────────────────
   const jobsByStatus: Record<string, number> = {}
   let paidRevenue = 0
@@ -126,6 +166,8 @@ export async function GET() {
     funnel,
     runs: runSeries,
     topCrops,
+    byCounty,
+    byVertical,
     jobsByStatus,
     // Conversion: how the top of the funnel becomes signed business.
     conversion: {
