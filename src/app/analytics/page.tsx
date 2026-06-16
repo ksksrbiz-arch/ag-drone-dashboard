@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import {
   Bar,
   BarChart,
@@ -10,6 +11,15 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { supabase, type Lead } from '@/lib/supabase'
+import { BASEMAP_OPTIONS, type Basemap } from '@/lib/map/basemaps'
+import type { ColorBy, MapMode, CountyAgg } from '@/components/intel/LeadMap'
+
+// Leaflet touches `window` — load the map client-side only.
+const LeadMap = dynamic(() => import('@/components/intel/LeadMap'), {
+  ssr: false,
+  loading: () => <div className="h-[360px] md:h-[460px] w-full skeleton rounded-xl" />,
+})
 
 interface Analytics {
   generatedAt: string
@@ -32,8 +42,18 @@ interface Analytics {
   funnel: { stage: string; label: string; count: number; pct: number }[]
   runs: { date: string; leadsProcessed: number; leadsEnriched: number; aiCalls: number; aiTokens: number; durationMs: number }[]
   topCrops: { crop: string; count: number; avgPriority: number | null }[]
+  byCounty: CountyAgg[]
+  byVertical: { vertical: string; count: number; signed: number; avgPriority: number | null }[]
   jobsByStatus: Record<string, number>
   conversion: { contactedOrBeyond: number; signed: number; signRatePct: number; paidJobs: number }
+}
+
+const VERTICAL_LABEL: Record<string, string> = {
+  ag_spray: '🌾 Ag Spray',
+  insurance: '🏠 Insurance',
+  real_estate: '🏡 Real Estate',
+  construction: '🏗️ Construction',
+  energy: '☀️ Solar & Infra',
 }
 
 const TIER_BAR: Record<string, string> = {
@@ -45,13 +65,26 @@ const TIER_BAR: Record<string, string> = {
 
 export default function AnalyticsPage() {
   const [data, setData] = useState<Analytics | null>(null)
+  const [mapLeads, setMapLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
+  // Territory-map controls
+  const [colorBy, setColorBy] = useState<ColorBy>('priority')
+  const [mapMode, setMapMode] = useState<MapMode>('leads')
+  const [basemap, setBasemap] = useState<Basemap>('streets')
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/analytics', { cache: 'no-store' })
+      const [res, leadsRes] = await Promise.all([
+        fetch('/api/analytics', { cache: 'no-store' }),
+        // Geocoded leads for the territory map (lightweight column set).
+        supabase
+          .from('leads')
+          .select('id,business_name,owner_name,city,county,primary_crop,lat,lon,priority_tier,priority_score,loi_status,composite_efb_risk')
+          .not('lat', 'is', null),
+      ])
       const json = await res.json()
       if (json.ok) setData(json as Analytics)
+      setMapLeads((leadsRes.data ?? []) as Lead[])
     } catch {
       /* best-effort */
     }
@@ -151,6 +184,108 @@ export default function AnalyticsPage() {
             </ResponsiveContainer>
           )}
         </ChartCard>
+      </div>
+
+      {/* Territory map */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700">Territory Map</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {mapMode === 'counties'
+                ? 'Counties sized by lead count, colored by average priority'
+                : `${mapLeads.length} geocoded leads, colored by ${colorBy}`}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+              {(['leads', 'counties'] as MapMode[]).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setMapMode(m)}
+                  className={`tap px-3 py-1.5 font-medium transition-colors ${mapMode === m ? 'bg-brand-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {m === 'leads' ? 'Leads' : 'Counties'}
+                </button>
+              ))}
+            </div>
+            {mapMode === 'leads' && (
+              <select
+                value={colorBy}
+                onChange={e => setColorBy(e.target.value as ColorBy)}
+                className="tap text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="priority">Color: Priority</option>
+                <option value="status">Color: Pipeline</option>
+                <option value="efb">Color: EFB risk</option>
+                <option value="crop">Color: Crop</option>
+              </select>
+            )}
+            <select
+              value={basemap}
+              onChange={e => setBasemap(e.target.value as Basemap)}
+              className="tap text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {BASEMAP_OPTIONS.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <LeadMap leads={mapLeads} counties={data.byCounty} mode={mapMode} colorBy={colorBy} basemap={basemap} />
+      </div>
+
+      {/* Geographic + vertical breakdowns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
+          <h2 className="text-sm font-semibold text-slate-700 mb-4">By County</h2>
+          {data.byCounty.length === 0 ? (
+            <Empty msg="No county data yet." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-500 border-b border-slate-100">
+                    <th className="pb-2 font-medium">County</th>
+                    <th className="pb-2 font-medium text-right">Leads</th>
+                    <th className="pb-2 font-medium text-right">Avg</th>
+                    <th className="pb-2 font-medium text-right">Signed</th>
+                    <th className="pb-2 font-medium text-right">Pipeline</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.byCounty.slice(0, 12).map(c => (
+                    <tr key={c.county} className="border-b border-slate-50 last:border-0">
+                      <td className="py-1.5 text-slate-700 truncate max-w-[140px]">{c.county}</td>
+                      <td className="py-1.5 text-right text-slate-600">{c.count}</td>
+                      <td className="py-1.5 text-right text-slate-500">{c.avgPriority ?? '—'}</td>
+                      <td className="py-1.5 text-right text-slate-600">{c.signed}</td>
+                      <td className="py-1.5 text-right text-slate-500">{c.pipeline ? `$${c.pipeline.toLocaleString()}` : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
+          <h2 className="text-sm font-semibold text-slate-700 mb-4">By Vertical</h2>
+          {data.byVertical.length === 0 ? (
+            <Empty msg="No vertical data yet." />
+          ) : (
+            <div className="space-y-2">
+              {data.byVertical.map(v => (
+                <div key={v.vertical} className="flex items-center justify-between text-sm py-1 border-b border-slate-50 last:border-0">
+                  <span className="text-slate-700 truncate">{VERTICAL_LABEL[v.vertical] ?? v.vertical}</span>
+                  <span className="flex items-center gap-3 shrink-0 text-xs">
+                    <span className="text-slate-400">avg {v.avgPriority ?? '—'}</span>
+                    <span className="text-slate-400">{v.signed} signed</span>
+                    <span className="text-slate-900 font-medium w-8 text-right">{v.count}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Pipeline funnel */}
