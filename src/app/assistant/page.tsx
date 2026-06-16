@@ -7,6 +7,7 @@ import { extractText, isSupportedFile, ATTACH_EXT } from '@/lib/files/extractTex
 import { matchSlash, resolveSlash, type SlashCommand } from '@/lib/assistant/slashCommands'
 import { SlashMenu } from '@/components/assistant/SlashMenu'
 import { EntityChips } from '@/components/assistant/EntityChips'
+import { ASSISTANT_NAME } from '@/lib/business'
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -195,7 +196,7 @@ export default function AssistantPage() {
     <div className="p-6 md:p-8 max-w-3xl mx-auto animate-fade flex flex-col h-full min-h-[70vh]">
       <div className="mb-4 shrink-0 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Ops Assistant</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{ASSISTANT_NAME}</h1>
           <p className="text-slate-500 text-sm mt-0.5">Ask about leads, customers, jobs, fields &amp; finances — or tell me to take an action. Answered from live data.</p>
         </div>
         {messages.length > 0 && (

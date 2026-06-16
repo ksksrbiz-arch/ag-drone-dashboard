@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { BRAND_NAME } from '@/lib/business'
+import { BRAND_NAME, PRODUCT_NAME, PRODUCT_TAGLINE } from '@/lib/business'
 
 // Two sign-in methods:
 //  • Password  — email + password (no email round-trip; not rate-limited).
@@ -96,8 +96,9 @@ function LoginInner() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-card p-7">
-        <h1 className="text-xl font-bold tracking-tight text-slate-900">{BRAND_NAME}</h1>
-        <p className="text-sm text-slate-500 mt-1 mb-5">Sign in to access the dashboard.</p>
+        <h1 className="text-xl font-bold tracking-tight text-slate-900">{PRODUCT_NAME}</h1>
+        <p className="text-xs text-slate-400 mt-0.5">{PRODUCT_TAGLINE}</p>
+        <p className="text-sm text-slate-500 mt-2 mb-5">Sign in to {BRAND_NAME}.</p>
 
         {sent ? (
           <div className="text-sm rounded-lg border border-green-200 bg-green-50 text-green-800 px-4 py-3">
