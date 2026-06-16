@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { setSidekickFocus } from '@/lib/assistant/context'
+import { ActivityTimeline } from '@/components/ActivityTimeline'
 import {
   supabase,
   type Customer,
@@ -373,6 +374,8 @@ function CustomerDetail({ customer, onSaved }: { customer: Customer; onSaved: (c
           className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
       </div>
+
+      <ActivityTimeline entityType="customer" entityId={customer.id} />
     </div>
   )
 }
