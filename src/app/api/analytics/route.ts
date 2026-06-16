@@ -21,7 +21,7 @@ const FUNNEL_STAGES: { key: string; label: string }[] = [
 export async function GET() {
   const supabase = getAdminClient()
 
-  const [runsRes, leadsRes, jobsRes, customersRes] = await Promise.all([
+  const [runsRes, leadsRes, jobsRes, customersRes, histRes] = await Promise.all([
     supabase
       .from('enrichment_runs')
       .select('started_at,leads_processed,leads_enriched,ai_calls,ai_tokens,duration_ms,status')
@@ -29,12 +29,20 @@ export async function GET() {
     supabase.from('leads').select('priority_score,priority_tier,loi_status,primary_crop,enrichment_status,county,vertical,est_annual_revenue,lat,lon'),
     supabase.from('jobs').select('status,paid_amount,invoice_amount'),
     supabase.from('customers').select('id', { count: 'exact', head: true }),
+    // Score-history snapshots for the portfolio trend (last 45 days; empty if
+    // the v4 table isn't migrated yet).
+    supabase
+      .from('lead_score_history')
+      .select('lead_id,score,tier,captured_at')
+      .gte('captured_at', new Date(Date.now() - 45 * 86400000).toISOString())
+      .order('captured_at', { ascending: true }),
   ])
 
   const runs = (runsRes.data ?? []) as any[]
   const leads = (leadsRes.data ?? []) as any[]
   const jobs = (jobsRes.data ?? []) as any[]
   const customers = customersRes.count ?? 0
+  const hist = (histRes.data ?? []) as any[]
 
   // ── Engine performance (per-run series + all-time cost) ──────────────────
   const runSeries = runs.slice(-14).map(r => ({
@@ -47,6 +55,30 @@ export async function GET() {
   }))
   const aiTokensTotal = runs.reduce((s, r) => s + (r.ai_tokens ?? 0), 0)
   const aiCallsTotal = runs.reduce((s, r) => s + (r.ai_calls ?? 0), 0)
+
+  // ── Portfolio trend: priority-tier mix over time (from score history) ─────
+  // Dedupe to the latest snapshot per lead per day so multiple runs in a day
+  // don't double-count, then aggregate the daily tier distribution + avg score.
+  const latestPerLeadDay = new Map<string, { day: string; score: number | null; tier: string | null }>()
+  for (const h of hist) {
+    const day = String(h.captured_at).slice(0, 10)
+    latestPerLeadDay.set(`${day}|${h.lead_id}`, { day, score: h.score, tier: h.tier })
+  }
+  const dayMap = new Map<string, { sum: number; n: number; P1: number; P2: number; P3: number; P4: number }>()
+  for (const e of latestPerLeadDay.values()) {
+    const d = dayMap.get(e.day) ?? { sum: 0, n: 0, P1: 0, P2: 0, P3: 0, P4: 0 }
+    if (typeof e.score === 'number') { d.sum += e.score; d.n++ }
+    if (e.tier && (d as any)[e.tier] != null) (d as any)[e.tier]++
+    dayMap.set(e.day, d)
+  }
+  const scoreTrend = [...dayMap.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([date, d]) => ({
+      date,
+      avgScore: d.n ? Math.round(d.sum / d.n) : null,
+      p1: d.P1, p2: d.P2, p3: d.P3, p4: d.P4,
+    }))
+    .slice(-30)
 
   // ── Lead aggregates: tiers, avg priority, funnel ─────────────────────────
   const tiers = { P1: 0, P2: 0, P3: 0, P4: 0 } as Record<string, number>
@@ -165,6 +197,7 @@ export async function GET() {
     tiers,
     funnel,
     runs: runSeries,
+    scoreTrend,
     topCrops,
     byCounty,
     byVertical,
