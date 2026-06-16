@@ -1,9 +1,18 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import { supabase, type Lead, type Vertical, type LOIStatus, type LeadScoreHistory } from '@/lib/supabase'
 import { setSidekickFocus } from '@/lib/assistant/context'
 import { ActivityTimeline } from '@/components/ActivityTimeline'
+import { BASEMAP_OPTIONS, type Basemap } from '@/lib/map/basemaps'
+import type { ColorBy } from '@/components/intel/LeadMap'
+
+// Leaflet touches `window` — load the territory map client-side only.
+const LeadMap = dynamic(() => import('@/components/intel/LeadMap'), {
+  ssr: false,
+  loading: () => <div className="h-[360px] md:h-[460px] w-full skeleton rounded-xl" />,
+})
 import { AiBrief } from '@/components/AiBrief'
 import { AskAce } from '@/components/AskAce'
 
@@ -70,6 +79,10 @@ export default function LeadsPage() {
   const [structured, setStructured] = useState<any>(null)
   const [notesBusy, setNotesBusy] = useState(false)
   const [history, setHistory] = useState<LeadScoreHistory[]>([])
+  // Table / map view + territory-map controls
+  const [view, setView] = useState<'table' | 'map'>('table')
+  const [mapColorBy, setMapColorBy] = useState<ColorBy>('priority')
+  const [mapBasemap, setMapBasemap] = useState<Basemap>('streets')
 
   useEffect(() => {
     supabase
@@ -376,18 +389,61 @@ export default function LeadsPage() {
           <option value="composite_efb_risk">Sort: EFB Risk</option>
           <option value="distance_to_canby_mi">Sort: Distance</option>
         </select>
+        <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+          {(['table', 'map'] as const).map(v => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              className={`tap px-3 py-2 font-medium transition-colors ${view === v ? 'bg-brand-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              {v === 'table' ? '☰ Table' : '🗺️ Map'}
+            </button>
+          ))}
+        </div>
+        {view === 'map' && (
+          <>
+            <select
+              value={mapColorBy}
+              onChange={e => setMapColorBy(e.target.value as ColorBy)}
+              className="tap text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option value="priority">Color: Priority</option>
+              <option value="status">Color: Pipeline</option>
+              <option value="efb">Color: EFB risk</option>
+              <option value="crop">Color: Crop</option>
+            </select>
+            <select
+              value={mapBasemap}
+              onChange={e => setMapBasemap(e.target.value as Basemap)}
+              className="tap text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {BASEMAP_OPTIONS.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
+            </select>
+          </>
+        )}
         </div>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-5">
-        {/* Table */}
-        <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+        {/* Table / Map */}
+        <div className="flex-1 min-w-0">
           {loading ? (
-            <div className="p-4 space-y-2">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4 space-y-2">
               {Array.from({ length: 12 }).map((_, i) => <div key={i} className="h-10 skeleton" />)}
             </div>
+          ) : view === 'map' ? (
+            <LeadMap
+              leads={filtered}
+              counties={[]}
+              mode="leads"
+              colorBy={mapColorBy}
+              basemap={mapBasemap}
+              onSelect={setSelected}
+              selectedId={selected?.id ?? null}
+            />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                   <tr className="text-left text-xs text-slate-500">

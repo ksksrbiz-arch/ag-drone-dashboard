@@ -37,6 +37,10 @@ interface LeadMapProps {
   mode: MapMode
   colorBy: ColorBy
   basemap: Basemap
+  /** Optional: make leads-mode markers clickable (e.g. open a detail panel). */
+  onSelect?: (lead: Lead) => void
+  /** Optional: highlight the currently-selected lead. */
+  selectedId?: string | null
 }
 
 const NO_DATA = '#64748b'
@@ -104,7 +108,7 @@ const LEGENDS: Record<ColorBy, { label: string; items: [string, string][] }> = {
   crop: { label: 'Colored by crop', items: [] },
 }
 
-export default function LeadMap({ leads, counties, mode, colorBy, basemap }: LeadMapProps) {
+export default function LeadMap({ leads, counties, mode, colorBy, basemap, onSelect, selectedId }: LeadMapProps) {
   const mapped = useMemo(() => leads.filter(hasCoords), [leads])
   const geoCounties = useMemo(
     () => counties.filter(c => typeof c.lat === 'number' && typeof c.lon === 'number') as (CountyAgg & { lat: number; lon: number })[],
@@ -127,12 +131,19 @@ export default function LeadMap({ leads, counties, mode, colorBy, basemap }: Lea
         {mode === 'leads' &&
           mapped.map(lead => {
             const color = leadColor(lead, colorBy)
+            const isSel = selectedId === lead.id
             return (
               <CircleMarker
                 key={lead.id}
                 center={[lead.lat, lead.lon]}
-                radius={6}
-                pathOptions={{ color, weight: 1.5, fillColor: color, fillOpacity: 0.7 }}
+                radius={isSel ? 9 : 6}
+                pathOptions={{
+                  color: isSel ? '#ffffff' : color,
+                  weight: isSel ? 3 : 1.5,
+                  fillColor: color,
+                  fillOpacity: 0.8,
+                }}
+                eventHandlers={onSelect ? { click: () => onSelect(lead) } : undefined}
               >
                 <Tooltip direction="top" offset={[0, -4]}>
                   <span className="text-xs font-semibold">{lead.business_name ?? lead.owner_name ?? 'Lead'}</span>
