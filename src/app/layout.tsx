@@ -3,13 +3,13 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import Sidebar from '@/components/Sidebar'
 import Sidekick from '@/components/Sidekick'
-import { BRAND_NAME } from '@/lib/business'
+import { PRODUCT_NAME, PRODUCT_TAGLINE } from '@/lib/business'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: BRAND_NAME,
-  description: 'Ag drone operations & precision intelligence dashboard',
+  title: `${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`,
+  description: 'Drone operations CRM & precision-intelligence platform.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

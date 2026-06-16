@@ -3,12 +3,12 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { BUSINESS, BRAND_NAME } from '@/lib/business'
+import { BUSINESS, BRAND_NAME, PRODUCT_NAME, ASSISTANT_NAME } from '@/lib/business'
 import { supabase } from '@/lib/supabase'
 
 const navItems = [
-  { href: '/',           label: 'Overview',   icon: '📊' },
-  { href: '/assistant',  label: 'Assistant',  icon: '✨' },
+  { href: '/',           label: 'Overview',       icon: '📊' },
+  { href: '/assistant',  label: ASSISTANT_NAME,   icon: '✨' },
   { href: '/leads',      label: 'Leads',      icon: '🌾' },
   { href: '/discover',   label: 'Discover',   icon: '🔍' },
   { href: '/outreach',   label: 'Outreach',   icon: '✉️' },
@@ -29,8 +29,8 @@ function Brand() {
     <div className="flex items-center gap-2.5">
       <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white text-base shadow-sm">🚁</div>
       <div className="leading-tight">
-        <div className="text-white font-bold text-sm tracking-tight">{BRAND_NAME}</div>
-        {BUSINESS.tagline && <div className="text-slate-400 text-[11px]">{BUSINESS.tagline}</div>}
+        <div className="text-white font-bold text-sm tracking-tight">{PRODUCT_NAME}</div>
+        {BRAND_NAME && <div className="text-slate-400 text-[11px]">{BRAND_NAME}</div>}
       </div>
     </div>
   )

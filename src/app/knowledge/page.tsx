@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { ASSISTANT_NAME } from '@/lib/business'
 
 interface Doc {
   id: string
@@ -183,7 +184,7 @@ export default function KnowledgePage() {
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800">Knowledge Base</h1>
         <p className="text-slate-500 text-sm mt-1">
-          Files, folders & notes the Sidekick assistant uses as context — pricing sheets, SOPs, call scripts, agronomy references. Upload PDFs or text files (or paste a note); ask Sidekick a reference question and it searches here.
+          Files, folders & notes {ASSISTANT_NAME} uses as context — pricing sheets, SOPs, call scripts, agronomy references. Upload PDFs or text files (or paste a note); ask {ASSISTANT_NAME} a reference question and it searches here.
         </p>
       </header>
 
@@ -260,7 +261,7 @@ export default function KnowledgePage() {
       ) : docs.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
           <p className="text-sm">No documents yet.</p>
-          {isStaff ? <p className="text-xs mt-1">Add a note or upload a file above to give Sidekick context.</p> : <p className="text-xs mt-1">Ask an owner/partner to add reference material.</p>}
+          {isStaff ? <p className="text-xs mt-1">Add a note or upload a file above to give {ASSISTANT_NAME} context.</p> : <p className="text-xs mt-1">Ask an owner/partner to add reference material.</p>}
         </div>
       ) : (
         <div className="space-y-6">
@@ -289,7 +290,7 @@ export default function KnowledgePage() {
                       onClick={() => window.dispatchEvent(new CustomEvent('sidekick:ask', { detail: { query: `From the "${d.title}" doc, give me the key points.` } }))}
                       className="mt-2.5 inline-flex items-center gap-1 text-[11px] text-brand-600 hover:text-brand-700 font-medium"
                     >
-                      ✨ Ask Sidekick about this
+                      ✨ Ask {ASSISTANT_NAME} about this
                     </button>
                   </div>
                 ))}

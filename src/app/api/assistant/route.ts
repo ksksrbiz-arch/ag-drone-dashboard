@@ -4,7 +4,7 @@ import { TOOLS, runTool, type ToolContext } from '@/lib/assistant/tools'
 import { runGroqAssistant, groqConfigured } from '@/lib/assistant/groq'
 import { createSupabaseServer } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabaseAdmin'
-import { BUSINESS, CITY_SHORT } from '@/lib/business'
+import { BUSINESS, CITY_SHORT, PRODUCT_NAME, ASSISTANT_NAME } from '@/lib/business'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,7 +19,7 @@ const PROVIDER =
 const MODEL = process.env.ASSISTANT_MODEL || process.env.ENRICHMENT_MODEL || 'claude-sonnet-4-6'
 const MAX_TURNS = 10
 
-const SYSTEM = `You are Sidekick, the operations co-pilot for ${BUSINESS.name || 'a drone-spraying ag-services business'}${CITY_SHORT ? ` (based in ${BUSINESS.city})` : ''}. You help the team run the business and you can DRIVE the dashboard for them.
+const SYSTEM = `You are ${ASSISTANT_NAME}, the AI assistant built into ${PRODUCT_NAME} — the drone-operations platform for ${BUSINESS.name || 'a drone-services business'}${CITY_SHORT ? ` (based in ${BUSINESS.city})` : ''}. You help the team run the business and you can DRIVE the app for them.
 
 You have tools to (a) READ live data, (b) NAVIGATE the app, (c) take ACTIONS, and (d) read & write a knowledge base. You are a capable agent: you can call several tools in sequence, feeding each result into the next step, before you answer.
 

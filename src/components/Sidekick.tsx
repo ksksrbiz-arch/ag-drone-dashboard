@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { getSidekickFocus } from '@/lib/assistant/context'
+import { ASSISTANT_NAME } from '@/lib/business'
 import { streamAssistant, speechSupported, type ChatAttachment, type EntityCard } from '@/lib/assistant/streamClient'
 import { extractText, isSupportedFile, ATTACH_EXT } from '@/lib/files/extractText'
 import { matchSlash, resolveSlash, type SlashCommand } from '@/lib/assistant/slashCommands'
@@ -300,11 +301,11 @@ export default function Sidekick() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          aria-label="Open Sidekick"
+          aria-label={`Open ${ASSISTANT_NAME}`}
           className="fixed bottom-5 right-5 z-[1000] inline-flex items-center gap-2 rounded-full bg-brand-500 hover:bg-brand-600 text-white shadow-lg px-4 py-3 transition-colors"
         >
           <SparkIcon />
-          <span className="text-sm font-medium">Sidekick</span>
+          <span className="text-sm font-medium">{ASSISTANT_NAME}</span>
           {badge > 0 && (
             <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-bold rounded-full bg-white text-brand-600">{badge}</span>
           )}
@@ -316,7 +317,7 @@ export default function Sidekick() {
           <div className="absolute inset-0 bg-black/30 sm:hidden" onClick={() => setOpen(false)} />
           <div className="absolute right-0 bottom-0 sm:static flex flex-col w-full sm:w-[380px] h-[88vh] sm:h-[600px] max-h-screen bg-white sm:rounded-2xl border border-slate-200 shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-800 text-white">
-              <div className="flex items-center gap-2"><SparkIcon s={16} /><span className="text-sm font-semibold">Sidekick</span></div>
+              <div className="flex items-center gap-2"><SparkIcon s={16} /><span className="text-sm font-semibold">{ASSISTANT_NAME}</span></div>
               <div className="flex items-center gap-1">
                 {messages.length > 0 && <button onClick={() => { setMessages([]); setLastUndo(null) }} className="tap-sq text-slate-300 hover:text-white text-xs px-2">Clear</button>}
                 <button onClick={() => setOpen(false)} aria-label="Close" className="tap-sq text-slate-300 hover:text-white text-xl leading-none">×</button>

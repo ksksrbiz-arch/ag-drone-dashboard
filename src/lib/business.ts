@@ -37,6 +37,18 @@ export const BUSINESS = {
 /** Short city (drops state), e.g. "Canby". Empty if no city configured. */
 export const CITY_SHORT = BUSINESS.city ? BUSINESS.city.split(',')[0].trim() : ''
 
+// ─────────────────────────────────────────────────────────────────────────
+// Product identity (white-label). The PRODUCT is the software platform
+// ("Sortie"); the BUSINESS above is the tenant/workspace using it. Both are
+// env-overridable so any licensee can rebrand without code changes:
+//   NEXT_PUBLIC_PRODUCT_NAME      e.g. "Sortie"
+//   NEXT_PUBLIC_PRODUCT_TAGLINE   e.g. "Drone Operations Platform"
+//   NEXT_PUBLIC_ASSISTANT_NAME    the built-in AI's name, e.g. "Ace"
+// ─────────────────────────────────────────────────────────────────────────
+export const PRODUCT_NAME = str(process.env.NEXT_PUBLIC_PRODUCT_NAME, 'Sortie')
+export const PRODUCT_TAGLINE = str(process.env.NEXT_PUBLIC_PRODUCT_TAGLINE, 'Drone Operations Platform')
+export const ASSISTANT_NAME = str(process.env.NEXT_PUBLIC_ASSISTANT_NAME, 'Ace')
+
 /** Display name with safe fallback for branding. */
 export const BRAND_NAME = BUSINESS.name || 'Drone Ops'
 
