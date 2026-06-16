@@ -2,14 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { streamAssistant, speechSupported, type ChatAttachment } from '@/lib/assistant/streamClient'
+import { streamAssistant, speechSupported, type ChatAttachment, type EntityCard } from '@/lib/assistant/streamClient'
 import { extractText, isSupportedFile, ATTACH_EXT } from '@/lib/files/extractText'
 import { matchSlash, resolveSlash, type SlashCommand } from '@/lib/assistant/slashCommands'
 import { SlashMenu } from '@/components/assistant/SlashMenu'
+import { EntityChips } from '@/components/assistant/EntityChips'
 
 interface Msg {
   role: 'user' | 'assistant'
   content: string
+  cards?: EntityCard[]
 }
 interface ClientAction {
   type: 'navigate' | 'refresh' | 'toast'
@@ -74,7 +76,17 @@ export default function AssistantPage() {
         onToken: t => { setStatus(null); appendToken(t) },
         onStatus: s => setStatus(s),
         onError: e => setError(e),
-        onDone: (actions, undo) => { setLastUndo(undo ?? null); runActions(actions); setStatus(null) },
+        onDone: (actions, undo, cards) => {
+          setLastUndo(undo ?? null)
+          if (cards?.length) setMessages(m => {
+            const copy = [...m]
+            const last = copy[copy.length - 1]
+            if (last?.role === 'assistant') copy[copy.length - 1] = { ...last, cards }
+            return copy
+          })
+          runActions(actions)
+          setStatus(null)
+        },
       }
     )
     setSending(false)
@@ -213,6 +225,7 @@ export default function AssistantPage() {
                     {isLastAssistant && sending && <span className="inline-block w-1.5 h-4 ml-0.5 align-middle bg-slate-400 animate-pulse" />}
                   </div>
                 ) : null}
+                {m.role === 'assistant' && <EntityChips cards={m.cards} />}
                 {m.role === 'assistant' && m.content && !(isLastAssistant && sending) && (
                   <div className="flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => copy(m.content)} className="text-[11px] text-slate-400 hover:text-slate-700">Copy</button>

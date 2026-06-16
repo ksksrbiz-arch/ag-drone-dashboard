@@ -25,6 +25,15 @@ export interface UndoSpec {
   args: Record<string, any>
 }
 
+/** A clickable entity the chat can render as a deep-linking chip under a reply. */
+export interface EntityCard {
+  kind: 'lead' | 'customer' | 'job' | 'field'
+  id: string
+  title: string
+  subtitle?: string
+  href: string
+}
+
 export interface ToolContext {
   isStaff: boolean
   actions: ClientAction[]
@@ -35,6 +44,8 @@ export interface ToolContext {
   /** Who is driving — used to attribute audit-log entries. */
   actorId?: string | null
   actorEmail?: string | null
+  /** Entities surfaced by read tools, rendered as clickable chips. */
+  cards?: EntityCard[]
 }
 
 const LEAD_COLS =
@@ -65,6 +76,44 @@ const JOB_STATUSES = ['quoted', 'scheduled', 'in_progress', 'completed', 'invoic
 const cap = (n: unknown, def: number, max: number) => {
   const v = typeof n === 'number' ? n : def
   return Math.min(Math.max(1, v), max)
+}
+
+const money = (v: unknown) => (v == null ? '' : `$${Math.round(Number(v) || 0).toLocaleString()}`)
+const compact = (parts: (string | number | null | undefined)[]) =>
+  parts.filter(p => p != null && p !== '').join(' · ')
+
+/** Append clickable entity chips (deduped by kind+id, capped) for the UI. */
+function pushCards(ctx: ToolContext, cards: EntityCard[]) {
+  if (!cards.length) return
+  const list = (ctx.cards ||= [])
+  for (const c of cards) {
+    if (list.length >= 8) break
+    if (!list.some(x => x.kind === c.kind && x.id === c.id)) list.push(c)
+  }
+}
+
+function leadCard(l: any): EntityCard {
+  const name = l.business_name || l.owner_name || 'Lead'
+  return {
+    kind: 'lead',
+    id: String(l.id),
+    title: name,
+    subtitle: compact([l.county, l.primary_crop, l.priority_tier, l.priority_score != null ? `score ${Math.round(l.priority_score)}` : null]),
+    href: `/leads?search=${encodeURIComponent(name)}`,
+  }
+}
+function customerCard(c: any): EntityCard {
+  const name = c.business_name || c.contact_name || 'Customer'
+  return { kind: 'customer', id: String(c.id), title: name, subtitle: compact([c.city, c.status, c.primary_crop]), href: '/customers' }
+}
+function jobCard(j: any): EntityCard {
+  return {
+    kind: 'job',
+    id: String(j.id),
+    title: j.job_title || 'Job',
+    subtitle: compact([j.status, j.scheduled_date, money(j.invoice_amount ?? j.quote_amount)]),
+    href: '/jobs',
+  }
 }
 
 /** Return a window of `len` chars around the first query term, for snippets. */
@@ -649,7 +698,9 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
         .limit(cap(args.limit, 15, 50))
       q = applyLeadFilters(q, args)
       const { data, error } = await q
-      return error ? { error: error.message } : data
+      if (error) return { error: error.message }
+      pushCards(ctx, (data ?? []).slice(0, 6).map(leadCard))
+      return data
     }
     case 'count_leads': {
       let q = supabase.from('leads').select('id', { count: 'exact', head: true })
@@ -680,12 +731,15 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       if (args.search)
         q = q.or(`business_name.ilike.%${args.search}%,contact_name.ilike.%${args.search}%,city.ilike.%${args.search}%`)
       const { data, error } = await q
-      return error ? { error: error.message } : data
+      if (error) return { error: error.message }
+      pushCards(ctx, (data ?? []).slice(0, 6).map(customerCard))
+      return data
     }
     case 'get_customer_detail': {
       const r = await resolveCustomer(supabase, args)
       if (r.error) return r
       const c = r.customer
+      pushCards(ctx, [customerCard(c)])
       return {
         customer: {
           id: c.id,
@@ -739,7 +793,9 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       let q = supabase.from('jobs').select(JOB_COLS).limit(cap(args.limit, 15, 50))
       if (args.status) q = q.eq('status', args.status)
       const { data, error } = await q
-      return error ? { error: error.message } : data
+      if (error) return { error: error.message }
+      pushCards(ctx, (data ?? []).slice(0, 6).map(jobCard))
+      return data
     }
     case 'get_finance_summary': {
       const { data, error } = await supabase.from('jobs').select('status, quote_amount, invoice_amount, paid_amount').limit(2000)
@@ -887,6 +943,7 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       const r = await resolveLead(supabase, args, ctx)
       if (r.error) return r
       const l = r.lead
+      pushCards(ctx, [leadCard(l)])
       return {
         lead: {
           id: l.id,

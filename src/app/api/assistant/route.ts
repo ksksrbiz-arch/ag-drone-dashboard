@@ -197,8 +197,8 @@ export async function POST(req: NextRequest) {
       )
     }
     try {
-      const { reply, actions, undo } = await runGroqAssistant(incoming, system, ctx)
-      return NextResponse.json({ ok: true, reply, actions, undo })
+      const { reply, actions, undo, cards } = await runGroqAssistant(incoming, system, ctx)
+      return NextResponse.json({ ok: true, reply, actions, undo, cards })
     } catch (err: any) {
       return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 })
     }
@@ -248,7 +248,7 @@ export async function POST(req: NextRequest) {
         .map((b: any) => b.text)
         .join('\n')
         .trim() || 'Done.'
-    return NextResponse.json({ ok: true, reply, actions: ctx.actions, undo: ctx.undo ?? null })
+    return NextResponse.json({ ok: true, reply, actions: ctx.actions, undo: ctx.undo ?? null, cards: ctx.cards ?? [] })
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 })
   }

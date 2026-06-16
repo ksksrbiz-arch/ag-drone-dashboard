@@ -25,7 +25,7 @@ const OPENAI_TOOLS = TOOLS.map(t => ({
 export type StreamEvent =
   | { type: 'status'; text: string }
   | { type: 'token'; text: string }
-  | { type: 'done'; actions: ToolContext['actions']; undo: ToolContext['undo'] }
+  | { type: 'done'; actions: ToolContext['actions']; undo: ToolContext['undo']; cards: ToolContext['cards'] }
   | { type: 'error'; error: string }
 
 const TOOL_STATUS: Record<string, string> = {
@@ -117,7 +117,7 @@ export async function streamGroqAssistant(
         else if (ctx.actions.length) reply = 'Done.'
         else reply = (await answerWithoutTools(key, messages).catch(() => '')) || 'Sorry, I had trouble with that one — try rephrasing it?'
         emit({ type: 'token', text: reply })
-        emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null })
+        emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null, cards: ctx.cards ?? [] })
         return
       }
       messages.push({ role: 'assistant', content: null, tool_calls: recovered })
@@ -195,9 +195,9 @@ export async function streamGroqAssistant(
       const fallback = ctx.actions.some(a => a.type === 'navigate') ? 'Opening that for you.' : 'Done.'
       emit({ type: 'token', text: fallback })
     }
-    emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null })
+    emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null, cards: ctx.cards ?? [] })
     return
   }
 
-  emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null })
+  emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null, cards: ctx.cards ?? [] })
 }

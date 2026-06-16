@@ -1,4 +1,4 @@
-import { TOOLS, runTool, type ToolContext, type ClientAction, type UndoSpec } from './tools'
+import { TOOLS, runTool, type ToolContext, type ClientAction, type UndoSpec, type EntityCard } from './tools'
 import { modelCandidates, noteWorkingModel, shouldTryNextModel } from './groqModel'
 import { recoverToolCalls } from './recover'
 
@@ -61,7 +61,7 @@ export async function runGroqAssistant(
   userMessages: { role: string; content: string }[],
   system: string,
   ctx: ToolContext
-): Promise<{ reply: string; actions: ClientAction[]; undo: UndoSpec | null }> {
+): Promise<{ reply: string; actions: ClientAction[]; undo: UndoSpec | null; cards: EntityCard[] }> {
   const key = process.env.GROQ_API_KEY
   if (!key) throw new Error('GROQ_API_KEY is not set')
 
@@ -107,14 +107,15 @@ export async function runGroqAssistant(
       if (!recovered) {
         console.error('[groq] all model candidates failed:', lastErr)
         // If earlier turns already queued actions (e.g. navigation), confirm those.
-        if (ctx.actions.some(a => a.type === 'navigate')) return { reply: 'Opening that for you.', actions: ctx.actions, undo: ctx.undo ?? null }
-        if (ctx.actions.length) return { reply: 'Done.', actions: ctx.actions, undo: ctx.undo ?? null }
+        if (ctx.actions.some(a => a.type === 'navigate')) return { reply: 'Opening that for you.', actions: ctx.actions, undo: ctx.undo ?? null, cards: ctx.cards ?? [] }
+        if (ctx.actions.length) return { reply: 'Done.', actions: ctx.actions, undo: ctx.undo ?? null, cards: ctx.cards ?? [] }
         // Otherwise make one tool-free attempt so a malformed tool call doesn't dead-end.
         const text = await answerWithoutTools(key, messages).catch(() => '')
         return {
           reply: text || 'Sorry, I had trouble with that one — try rephrasing it?',
           actions: ctx.actions,
           undo: ctx.undo ?? null,
+          cards: ctx.cards ?? [],
         }
       }
       msg = { role: 'assistant', content: null, tool_calls: recovered }
@@ -148,8 +149,8 @@ export async function runGroqAssistant(
         ? 'Opening that for you.'
         : 'Done.'
     }
-    return { reply, actions: ctx.actions, undo: ctx.undo ?? null }
+    return { reply, actions: ctx.actions, undo: ctx.undo ?? null, cards: ctx.cards ?? [] }
   }
 
-  return { reply: 'I wasn’t able to finish that — try rephrasing?', actions: ctx.actions, undo: ctx.undo ?? null }
+  return { reply: 'I wasn’t able to finish that — try rephrasing?', actions: ctx.actions, undo: ctx.undo ?? null, cards: ctx.cards ?? [] }
 }
