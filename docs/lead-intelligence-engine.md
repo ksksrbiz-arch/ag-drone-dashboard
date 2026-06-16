@@ -75,6 +75,18 @@ that history durable and turns it into action:
 
 ---
 
+## Outreach queue — the action layer
+
+The engine decides *who* to contact and *what* to say; the **Outreach** tab turns
+that into **review-first drafts**. Hit **Generate drafts** and it picks the top
+outreach-ready leads (not yet past initial contact, hottest first, reachable on
+the chosen channel), drafts a personalized email or SMS grounded in each lead's
+`recommended_approach` / `next_best_action` / `talking_points`, and queues them.
+The operator edits, **Approve**s, **Mark sent**s, or **Dismiss**es — **nothing is
+ever sent automatically**. Each lead is queued at most once while a draft is open.
+
+---
+
 ## Reliability & ops (new in v3)
 
 - **Per-lead retries with backoff** on transient research failures (`ENRICHMENT_RETRIES`, default 2).
@@ -115,13 +127,17 @@ that history durable and turns it into action:
   (SSOT AI analysis), `apollo.ts` (contact booster), `dedupe.ts` (duplicate detection +
   merge), `engine.ts` (orchestrator: retries, momentum, cost, summaries).
 - **Endpoints:** `POST /api/enrich/run` (cron + manual), `POST /api/enrich/lead/[id]`
-  (single), `GET /api/enrich/status` (health), `GET|POST /api/leads/dedupe` (duplicates).
+  (single), `GET /api/enrich/status` (health), `GET|POST /api/leads/dedupe` (duplicates),
+  `GET|POST|PATCH /api/outreach/queue` (outreach drafts).
+- **Outreach:** `src/lib/outreach/` — `draft.ts` (shared drafting, reused by the
+  per-lead action) + `queue.ts` (batch generation); the `/outreach` page works the queue.
 - **Schema:** `supabase/migrations/20260614000000_lead_intelligence_engine.sql`
   (base columns + run audit), `20260615010000_lead_intel_v3.sql` (momentum,
   advisory, token columns, refreshed views + `lead_priority_movers`), and
   `20260616000000_lead_intel_v4.sql` (`lead_score_history`, `stage_changed_at` +
-  trigger, and the `lead_followups` / `lead_heating_up` views). All additive and
-  safe to re-run.
+  trigger, and the `lead_followups` / `lead_heating_up` views), and
+  `20260616010000_outreach_queue.sql` (the `outreach_drafts` table). All additive
+  and safe to re-run.
 - **Tuning (env):** `ENRICHMENT_BATCH_SIZE`, `ENRICHMENT_CONCURRENCY`,
   `ENRICHMENT_STALE_DAYS`, `ENRICHMENT_RETRIES`, `ENRICHMENT_AUTOTAG`,
   `ENRICHMENT_MODEL` (display/compat). Optional `APOLLO_API_KEY` for contact data.

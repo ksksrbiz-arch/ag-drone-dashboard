@@ -132,6 +132,23 @@ export interface LeadScoreHistory {
   captured_at: string
 }
 
+export type OutreachChannel = 'email' | 'sms'
+export type OutreachStatus = 'draft' | 'approved' | 'sent' | 'dismissed'
+
+/** A review-first outreach draft generated from a lead's intelligence. */
+export interface OutreachDraft {
+  id: string
+  lead_id: string
+  channel: OutreachChannel
+  subject: string | null
+  body: string
+  status: OutreachStatus
+  reason: string | null
+  priority_tier: PriorityTier | null
+  created_at: string
+  updated_at: string
+}
+
 export interface EnrichmentRun {
   id: string
   started_at: string
