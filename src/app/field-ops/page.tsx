@@ -108,7 +108,7 @@ export default function FieldOpsPage() {
   }
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto animate-fade">
+    <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto animate-fade">
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Field Ops</h1>
         <p className="text-slate-500 text-sm mt-0.5">

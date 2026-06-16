@@ -63,7 +63,7 @@ export default function AnalyticsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
+      <div className="p-4 sm:p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
         <div className="h-7 w-48 skeleton" />
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
           {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-24 skeleton" />)}
@@ -75,7 +75,7 @@ export default function AnalyticsPage() {
 
   if (!data) {
     return (
-      <div className="p-6 md:p-8 max-w-7xl mx-auto">
+      <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
         <h1 className="text-2xl font-bold text-slate-900">Analytics</h1>
         <p className="text-sm text-slate-500 mt-2">No analytics available yet.</p>
       </div>
@@ -91,7 +91,7 @@ export default function AnalyticsPage() {
   const scoredTotal = Object.values(data.tiers).reduce((s, n) => s + n, 0) || 1
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-fade">
+    <div className="p-4 sm:p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-fade">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Analytics</h1>
