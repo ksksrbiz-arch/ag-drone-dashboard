@@ -41,6 +41,7 @@ interface Analytics {
   tiers: Record<string, number>
   funnel: { stage: string; label: string; count: number; pct: number }[]
   runs: { date: string; leadsProcessed: number; leadsEnriched: number; aiCalls: number; aiTokens: number; durationMs: number }[]
+  scoreTrend: { date: string; avgScore: number | null; p1: number; p2: number; p3: number; p4: number }[]
   topCrops: { crop: string; count: number; avgPriority: number | null }[]
   byCounty: CountyAgg[]
   byVertical: { vertical: string; count: number; signed: number; avgPriority: number | null }[]
@@ -120,6 +121,10 @@ export default function AnalyticsPage() {
     ...r,
     label: new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
   }))
+  const trendChart = data.scoreTrend.map(d => ({
+    ...d,
+    label: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+  }))
   const maxFunnel = Math.max(1, ...data.funnel.map(f => f.count))
   const scoredTotal = Object.values(data.tiers).reduce((s, n) => s + n, 0) || 1
 
@@ -185,6 +190,26 @@ export default function AnalyticsPage() {
           )}
         </ChartCard>
       </div>
+
+      {/* Portfolio priority mix over time */}
+      <ChartCard title="Portfolio Priority Mix" hint="Daily P1–P4 distribution over the last 30 days (from score history)">
+        {trendChart.length === 0 ? (
+          <Empty msg="No history yet — needs a couple of scoring runs to chart the trend." />
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={trendChart} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} allowDecimals={false} />
+              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }} />
+              <Bar dataKey="p1" stackId="t" name="P1" fill="#ef4444" />
+              <Bar dataKey="p2" stackId="t" name="P2" fill="#fb923c" />
+              <Bar dataKey="p3" stackId="t" name="P3" fill="#facc15" />
+              <Bar dataKey="p4" stackId="t" name="P4" fill="#94a3b8" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </ChartCard>
 
       {/* Territory map */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
