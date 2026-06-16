@@ -22,6 +22,7 @@ const navItems = [
   { href: '/knowledge',  label: 'Knowledge',  icon: '📚' },
   { href: '/alerts',     label: 'Alerts',     icon: '🔔' },
   { href: '/automation', label: 'Automation', icon: '🤖' },
+  { href: '/analytics',  label: 'Analytics',  icon: '📈' },
 ]
 
 function Brand() {
