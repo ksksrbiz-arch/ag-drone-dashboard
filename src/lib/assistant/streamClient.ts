@@ -7,11 +7,19 @@ export interface ChatAttachment {
   text: string
 }
 
+export interface EntityCard {
+  kind: 'lead' | 'customer' | 'job' | 'field'
+  id: string
+  title: string
+  subtitle?: string
+  href: string
+}
+
 export interface StreamHandlers {
   onToken: (t: string) => void
   onStatus: (s: string) => void
   onError: (e: string) => void
-  onDone: (actions: any[] | undefined, undo: any) => void
+  onDone: (actions: any[] | undefined, undo: any, cards: EntityCard[]) => void
 }
 
 export interface StreamOptions {
@@ -67,7 +75,7 @@ export async function streamAssistant(opts: StreamOptions, h: StreamHandlers): P
         if (e.type === 'token') h.onToken(e.text)
         else if (e.type === 'status') h.onStatus(e.text)
         else if (e.type === 'error') h.onError(e.error)
-        else if (e.type === 'done') h.onDone(e.actions, e.undo ?? null)
+        else if (e.type === 'done') h.onDone(e.actions, e.undo ?? null, Array.isArray(e.cards) ? e.cards : [])
       }
     }
   } catch (err: any) {
