@@ -27,7 +27,7 @@ export async function GET() {
       .select('started_at,leads_processed,leads_enriched,ai_calls,ai_tokens,duration_ms,status')
       .order('started_at', { ascending: true }),
     supabase.from('leads').select('priority_score,priority_tier,loi_status,primary_crop,enrichment_status,county,vertical,est_annual_revenue,lat,lon'),
-    supabase.from('jobs').select('status,paid_amount,invoice_amount'),
+    supabase.from('jobs').select('status,paid_amount,invoice_amount,county'),
     supabase.from('customers').select('id', { count: 'exact', head: true }),
     // Score-history snapshots for the portfolio trend (last 45 days; empty if
     // the v4 table isn't migrated yet).
@@ -150,6 +150,13 @@ export async function GET() {
     if (score != null) { v.sum += score; v.n++ }
     vertMap.set(vertical, v)
   }
+  // Realized revenue (collected) per county, from the jobs table.
+  const countyRevenue = new Map<string, number>()
+  for (const j of jobs) {
+    const c = (j.county ?? '').trim()
+    if (!c) continue
+    countyRevenue.set(c, (countyRevenue.get(c) ?? 0) + (j.paid_amount ?? 0))
+  }
   const byCounty = [...countyMap.entries()]
     .map(([county, e]) => ({
       county,
@@ -157,6 +164,7 @@ export async function GET() {
       signed: e.signed,
       avgPriority: e.n ? Math.round(e.sum / e.n) : null,
       pipeline: Math.round(e.pipeline),
+      revenue: Math.round(countyRevenue.get(county) ?? 0),
       lat: e.geoN ? e.latSum / e.geoN : null,
       lon: e.geoN ? e.lonSum / e.geoN : null,
     }))

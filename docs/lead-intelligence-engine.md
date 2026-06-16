@@ -90,9 +90,10 @@ It also includes a **Territory Map** (`src/components/intel/LeadMap.tsx`, a
 generalized Leaflet map) that plots geocoded leads colored by **priority tier /
 pipeline stage / EFB risk / crop**, or switches to a **county view** — one bubble
 per county at its lead centroid, sized by lead count and colored by average
-priority. Alongside it, **By County** (count, avg priority, signed, pipeline
-value) and **By Vertical** breakdowns turn the geography into numbers. The API
-returns `byCounty` (with centroids) and `byVertical` for these. A **Portfolio
+priority **or collected revenue** (toggle). Alongside it, **By County** (count,
+avg priority, signed, pipeline value, and **collected revenue** from jobs) and
+**By Vertical** breakdowns turn the geography into numbers. The API returns
+`byCounty` (with centroids + revenue) and `byVertical` for these. A **Portfolio
 Priority Mix** chart (`scoreTrend`) shows the daily P1–P4 distribution over the
 last 30 days from `lead_score_history` — the portfolio-level companion to the
 per-lead Heating Up / Cooling Off signals.
