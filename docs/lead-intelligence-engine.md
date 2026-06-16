@@ -75,6 +75,16 @@ that history durable and turns it into action:
 
 ---
 
+## Analytics
+
+The **Analytics** tab (`/analytics`, served by `GET /api/analytics`) aggregates
+the data the system now captures into one operator view: **engine throughput &
+AI-cost trends** per run (from `enrichment_runs`), the **pipeline funnel** with
+sign-rate, **priority distribution**, **top crops** by volume + average priority,
+and **jobs/revenue**. Read-only — no migration required.
+
+---
+
 ## Outreach queue — the action layer
 
 The engine decides *who* to contact and *what* to say; the **Outreach** tab turns
