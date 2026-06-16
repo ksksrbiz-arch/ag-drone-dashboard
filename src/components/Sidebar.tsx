@@ -11,6 +11,7 @@ const navItems = [
   { href: '/assistant',  label: 'Assistant',  icon: '✨' },
   { href: '/leads',      label: 'Leads',      icon: '🌾' },
   { href: '/discover',   label: 'Discover',   icon: '🔍' },
+  { href: '/outreach',   label: 'Outreach',   icon: '✉️' },
   { href: '/pipeline',   label: 'Pipeline',   icon: '🔄' },
   { href: '/customers',  label: 'Customers',  icon: '🤝' },
   { href: '/jobs',       label: 'Jobs',       icon: '✈️' },
