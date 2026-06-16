@@ -709,6 +709,22 @@ function summarizeAction(name: string, _args: Args, r: any): string {
   }
 }
 
+/** Best-effort timeline entry for an automated change. Never throws. */
+async function logTimeline(supabase: any, ctx: ToolContext, entityType: string, entityId: string, kind: string, body: string) {
+  try {
+    await supabase.from('activities').insert({
+      entity_type: entityType,
+      entity_id: entityId,
+      kind,
+      body,
+      actor_id: ctx.actorId ?? null,
+      actor_email: ctx.actorEmail ?? null,
+    })
+  } catch {
+    /* timeline logging is non-critical */
+  }
+}
+
 /** Best-effort audit log — never blocks or throws into the tool result. */
 async function logAction(ctx: ToolContext, name: string, args: Args, result: any) {
   try {
@@ -825,6 +841,7 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       if (error) return { error: error.message }
       ctx.actions.push({ type: 'refresh' })
       ctx.undo = { label: `${name}'s status (back to ${c.status})`, tool: '_revert_customer', args: { id: c.id, patch: { status: c.status } } }
+      await logTimeline(supabase, ctx, 'customer', c.id, 'stage', `Status → ${args.status}`)
       return { ok: true, customer: name, status: args.status }
     }
     case 'add_customer_note': {
@@ -1131,6 +1148,7 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       if (error) return { error: error.message }
       ctx.actions.push({ type: 'refresh' })
       ctx.undo = { label: `${name}'s stage (back to ${prev})`, tool: '_revert_lead', args: { id: r.lead.id, patch: { loi_status: prev } } }
+      await logTimeline(supabase, ctx, 'lead', r.lead.id, 'stage', `Stage → ${String(args.loi_status).replace(/_/g, ' ')}`)
       return { ok: true, lead: name, loi_status: args.loi_status }
     }
     case 'tag_lead': {
@@ -1178,7 +1196,11 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
         .single()
       if (error) return { error: error.message }
       ctx.actions.push({ type: 'refresh' })
-      if (data?.id) ctx.undo = { label: `customer ${l.business_name ?? l.owner_name}`, tool: '_delete_customer', args: { id: data.id } }
+      if (data?.id) {
+        ctx.undo = { label: `customer ${l.business_name ?? l.owner_name}`, tool: '_delete_customer', args: { id: data.id } }
+        await logTimeline(supabase, ctx, 'lead', l.id, 'system', 'Converted to a customer')
+        await logTimeline(supabase, ctx, 'customer', data.id, 'system', `Created from lead ${l.business_name ?? l.owner_name ?? ''}`.trim())
+      }
       return { ok: true, customer_id: data?.id, name: l.business_name ?? l.owner_name }
     }
     case 'run_operation': {
@@ -1286,6 +1308,7 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
         tool: '_revert_job',
         args: { id: j.id, patch: { status: j.status, completed_date: j.completed_date ?? null, paid_amount: j.paid_amount ?? null } },
       }
+      await logTimeline(supabase, ctx, 'job', j.id, 'stage', `Status → ${args.status}`)
       return { ok: true, job: label, status: args.status }
     }
     case 'create_job': {

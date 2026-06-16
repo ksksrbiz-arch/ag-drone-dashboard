@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { setSidekickFocus } from '@/lib/assistant/context'
+import { ActivityTimeline } from '@/components/ActivityTimeline'
 import { supabase, type Job, type JobStatus } from '@/lib/supabase'
 
 const STATUS_COLS: { status: JobStatus; label: string; color: string }[] = [
@@ -245,6 +246,9 @@ export default function JobsPage() {
               </button>
             </div>
           )}
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <ActivityTimeline entityType="job" entityId={selected.id} />
+          </div>
         </div>
       )}
     </div>
