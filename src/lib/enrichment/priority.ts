@@ -248,11 +248,37 @@ export interface PriorityResult {
   explanation: string
 }
 
-export function computePriority(lead: Lead, signals: PrioritySignals = {}): PriorityResult {
+/** Optional, opt-in overrides for the scoring weights + tier thresholds. */
+export interface ScoringConfig {
+  agWeights?: Record<string, number>
+  nonAgWeights?: Record<string, number>
+  thresholds?: { p1: number; p2: number; p3: number }
+}
+
+export const DEFAULT_THRESHOLDS = { p1: 75, p2: 55, p3: 35 }
+
+/** The factor catalog (key/label + default ag/non-ag weights) for the config UI. */
+export const SCORING_FACTORS = FACTORS.map(f => ({
+  key: f.key,
+  label: f.label,
+  agWeight: f.agWeight,
+  nonAgWeight: f.nonAgWeight,
+}))
+
+export function computePriority(
+  lead: Lead,
+  signals: PrioritySignals = {},
+  config: ScoringConfig = {}
+): PriorityResult {
   const ctx: ScoreContext = { signals, now: new Date() }
   const isAg = (lead.vertical ?? 'ag_spray') === 'ag_spray'
-  const active = FACTORS.map(f => ({ f, weight: isAg ? f.agWeight : f.nonAgWeight }))
-    .filter(x => x.weight > 0)
+  const overrides = isAg ? config.agWeights : config.nonAgWeights
+  const active = FACTORS.map(f => {
+    const base = isAg ? f.agWeight : f.nonAgWeight
+    const o = overrides?.[f.key]
+    const weight = typeof o === 'number' && o >= 0 ? o : base
+    return { f, weight }
+  }).filter(x => x.weight > 0)
   const totalWeight = active.reduce((s, x) => s + x.weight, 0) || 1
 
   const factors: PriorityFactor[] = active.map(({ f, weight }) => {
@@ -269,8 +295,12 @@ export function computePriority(lead: Lead, signals: PrioritySignals = {}): Prio
   })
 
   const score = Math.round(factors.reduce((s, f) => s + f.contribution, 0))
+  const th = config.thresholds
+  const p1 = th?.p1 ?? DEFAULT_THRESHOLDS.p1
+  const p2 = th?.p2 ?? DEFAULT_THRESHOLDS.p2
+  const p3 = th?.p3 ?? DEFAULT_THRESHOLDS.p3
   const tier: PriorityTier =
-    score >= 75 ? 'P1' : score >= 55 ? 'P2' : score >= 35 ? 'P3' : 'P4'
+    score >= p1 ? 'P1' : score >= p2 ? 'P2' : score >= p3 ? 'P3' : 'P4'
 
   return { score, tier, factors, explanation: explain(factors, tier) }
 }
