@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { setSidekickFocus } from '@/lib/assistant/context'
 import { ActivityTimeline } from '@/components/ActivityTimeline'
+import { AiBrief } from '@/components/AiBrief'
+import { AskAce } from '@/components/AskAce'
 import {
   supabase,
   type Customer,
@@ -297,6 +299,15 @@ function CustomerDetail({ customer, onSaved }: { customer: Customer; onSaved: (c
             {customer.email && <span>✉️ {customer.email}</span>}
             {customer.primary_crop && <span>🌾 {customer.primary_crop}</span>}
           </div>
+        </div>
+        <div className="mt-2">
+          <AskAce
+            label="Brief me"
+            query={`Summarize my relationship with the customer ${customer.business_name ?? customer.contact_name ?? ''} — recent activity, contracts, service history, and what to do next.`}
+          />
+        </div>
+        <div className="mt-3">
+          <AiBrief entityType="customer" entityId={customer.id} />
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { AskAce } from '@/components/AskAce'
 import {
   Bar,
   BarChart,
@@ -133,9 +134,15 @@ export default function FinancePage() {
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto animate-fade space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Financial Intelligence</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Revenue, receivables & weighted pipeline forecast</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Financial Intelligence</h1>
+          <p className="text-slate-500 text-sm mt-0.5">Revenue, receivables & weighted pipeline forecast</p>
+        </div>
+        <AskAce
+          label="Ask Ace"
+          query="Give me a financial snapshot — collected vs outstanding A/R, this month's revenue trend, the oldest overdue invoices, and what needs attention."
+        />
       </div>
 
       {/* KPIs */}

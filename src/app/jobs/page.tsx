@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { setSidekickFocus } from '@/lib/assistant/context'
 import { ActivityTimeline } from '@/components/ActivityTimeline'
+import { AiBrief } from '@/components/AiBrief'
+import { AskAce } from '@/components/AskAce'
 import { supabase, type Job, type JobStatus } from '@/lib/supabase'
 
 const STATUS_COLS: { status: JobStatus; label: string; color: string }[] = [
@@ -223,13 +225,19 @@ export default function JobsPage() {
               ×
             </button>
           </div>
-          <button
-            onClick={() => generateReport(selected)}
-            disabled={reportBusy}
-            className="tap inline-flex items-center justify-center text-sm bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg px-4 py-2 transition-colors disabled:opacity-60 shadow-card"
-          >
-            {reportBusy ? 'Generating…' : '📄 Generate completion report'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => generateReport(selected)}
+              disabled={reportBusy}
+              className="tap inline-flex items-center justify-center text-sm bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg px-4 py-2 transition-colors disabled:opacity-60 shadow-card"
+            >
+              {reportBusy ? 'Generating…' : '📄 Generate completion report'}
+            </button>
+            <AskAce
+              label="Brief me"
+              query={`Summarize the job "${selected.job_title ?? 'this job'}" — status, schedule, amounts, and anything I should do before or after the flight.`}
+            />
+          </div>
           {report && (
             <div className="mt-3">
               <textarea
@@ -246,6 +254,9 @@ export default function JobsPage() {
               </button>
             </div>
           )}
+          <div className="mt-4">
+            <AiBrief entityType="job" entityId={selected.id} />
+          </div>
           <div className="mt-4 pt-4 border-t border-slate-100">
             <ActivityTimeline entityType="job" entityId={selected.id} />
           </div>

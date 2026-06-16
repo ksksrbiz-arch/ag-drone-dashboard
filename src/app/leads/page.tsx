@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase, type Lead, type Vertical, type LOIStatus, type LeadScoreHistory } from '@/lib/supabase'
 import { setSidekickFocus } from '@/lib/assistant/context'
 import { ActivityTimeline } from '@/components/ActivityTimeline'
+import { AiBrief } from '@/components/AiBrief'
+import { AskAce } from '@/components/AskAce'
 
 const VERTICALS: { value: Vertical | 'all'; label: string }[] = [
   { value: 'all',         label: 'All Verticals' },
@@ -473,6 +475,13 @@ export default function LeadsPage() {
               </h3>
               <button onClick={() => setSelected(null)} aria-label="Close detail" className="tap-sq inline-flex items-center justify-center text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>
+
+            <AskAce
+              label="Brief me"
+              query={`Give me a quick brief on the lead ${selected.business_name ?? selected.owner_name ?? ''} — why they matter and the single best next action.`}
+            />
+
+            <AiBrief entityType="lead" entityId={selected.id} />
 
             {(selected.priority_score != null || selected.recommended_approach || selected.enrichment_status) && (
               <Section title="Intelligence">
