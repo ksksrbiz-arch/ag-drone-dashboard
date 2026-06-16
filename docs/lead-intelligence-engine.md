@@ -1,7 +1,7 @@
 # Lead Intelligence Engine — Team Update
 
 **Status:** Live on `main`, deployed to Vercel · **App:** 1COMMERCE Drone Ops Dashboard · **Owner:** Field Ops
-**Engine version:** `lead-intel-v3`
+**Engine version:** `lead-intel-v4`
 
 ---
 
@@ -56,6 +56,25 @@ Each scoring run records the previous score, computes a **delta**, and labels a
 
 ---
 
+## History, trends & follow-ups (new in v4)
+
+v3's momentum only compares a lead to its *immediately previous* score. v4 makes
+that history durable and turns it into action:
+
+- **Score history** — every scoring run appends a snapshot per lead to
+  `lead_score_history` (score, tier, delta, timestamp). The **Leads** detail panel
+  draws a **sparkline** of a lead's priority over time.
+- **"Heating up"** — the `lead_heating_up` view flags leads whose score rose across
+  the **last 3 runs** (a sustained riser, not a one-run blip). Shown on the
+  Automation page and counted in the digest. *Needs ~3 runs of history to populate.*
+- **Follow-up SLAs** — a `stage_changed_at` timestamp (set by trigger when a lead's
+  pipeline stage changes) powers `lead_followups`: engaged leads that have stalled
+  past a per-stage SLA (`contacted` 5d · `meeting_scheduled` 3d · `loi_sent` 7d).
+  Surfaced as a **Follow-ups Due** panel and a digest section so warm leads don't
+  go cold.
+
+---
+
 ## Reliability & ops (new in v3)
 
 - **Per-lead retries with backoff** on transient research failures (`ENRICHMENT_RETRIES`, default 2).
@@ -74,8 +93,8 @@ Each scoring run records the previous score, computes a **delta**, and labels a
 
 | Page | What's new |
 | --- | --- |
-| **Automation** 🤖 | Engine health, coverage KPIs, priority distribution, top leads **with trend + next action**, **Priority Movers**, Next Best Actions, **Duplicate Leads**, AI tagging, and run history **with token cost**. |
-| **Leads** | Priority column + sort, the Intelligence panel (recommended approach, completeness, confidence), and **Refresh intel** per lead. |
+| **Automation** 🤖 | Engine health, coverage KPIs, priority distribution, top leads **with trend + next action**, **Priority Movers**, **Follow-ups Due**, **Heating Up**, Next Best Actions, **Duplicate Leads**, AI tagging, and run history **with token cost**. |
+| **Leads** | Priority column + sort, the Intelligence panel (recommended approach, next best action, talking points, completeness, confidence, **priority sparkline**), and **Refresh intel** per lead. |
 
 ---
 
@@ -98,9 +117,11 @@ Each scoring run records the previous score, computes a **delta**, and labels a
 - **Endpoints:** `POST /api/enrich/run` (cron + manual), `POST /api/enrich/lead/[id]`
   (single), `GET /api/enrich/status` (health), `GET|POST /api/leads/dedupe` (duplicates).
 - **Schema:** `supabase/migrations/20260614000000_lead_intelligence_engine.sql`
-  (base columns + run audit) and `20260615010000_lead_intel_v3.sql` (momentum,
-  advisory, token columns, refreshed views + `lead_priority_movers`). Both additive
-  and safe to re-run.
+  (base columns + run audit), `20260615010000_lead_intel_v3.sql` (momentum,
+  advisory, token columns, refreshed views + `lead_priority_movers`), and
+  `20260616000000_lead_intel_v4.sql` (`lead_score_history`, `stage_changed_at` +
+  trigger, and the `lead_followups` / `lead_heating_up` views). All additive and
+  safe to re-run.
 - **Tuning (env):** `ENRICHMENT_BATCH_SIZE`, `ENRICHMENT_CONCURRENCY`,
   `ENRICHMENT_STALE_DAYS`, `ENRICHMENT_RETRIES`, `ENRICHMENT_AUTOTAG`,
   `ENRICHMENT_MODEL` (display/compat). Optional `APOLLO_API_KEY` for contact data.

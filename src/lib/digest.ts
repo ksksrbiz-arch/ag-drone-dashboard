@@ -23,6 +23,15 @@ export async function buildDigest(): Promise<Digest> {
   const leads = (leadsData ?? []) as Lead[]
   const jobs = (jobsData ?? []) as Job[]
 
+  // v4 intelligence views — best-effort (null if not migrated yet).
+  const { data: followupData } = await supabase
+    .from('lead_followups')
+    .select('business_name,owner_name,city,loi_status,days_in_stage,next_best_action')
+  const followups = (followupData ?? []) as any[]
+  const { count: heatingCount } = await supabase
+    .from('lead_heating_up')
+    .select('id', { count: 'exact', head: true })
+
   const p1 = leads.filter(l => l.priority_tier === 'P1')
   const treatNow = leads.filter(l => l.action_recommendation === 'TREAT_NOW')
   const needsEnrichment = leads.filter(
@@ -62,6 +71,8 @@ export async function buildDigest(): Promise<Digest> {
     new_p1: risenP1.length,
     treat_now: treatNow.length,
     needs_enrichment: needsEnrichment.length,
+    followups_due: followups.length,
+    heating_up: heatingCount ?? 0,
     scheduled_today: scheduledToday.length,
     outstanding_ar: Math.round(outstandingAR),
   }
@@ -72,10 +83,22 @@ export async function buildDigest(): Promise<Digest> {
     `🌤️ ${sprayLine}`,
     `🔴 Treat-now leads: *${counts.treat_now}*`,
     `⭐ P1 priority leads: *${counts.p1}*${counts.new_p1 ? ` (📈 ${counts.new_p1} newly risen)` : ''}`,
+    `⏰ Follow-ups due: *${counts.followups_due}*${counts.heating_up ? ` · 🔥 ${counts.heating_up} heating up` : ''}`,
     `📅 Jobs scheduled today: *${counts.scheduled_today}*`,
     `🤖 Leads awaiting research: *${counts.needs_enrichment}*`,
     `💵 Outstanding A/R: *$${counts.outstanding_ar.toLocaleString()}*`,
   ]
+
+  if (followups.length) {
+    lines.push('', '*Follow-ups due:*')
+    for (const f of followups.slice(0, 5)) {
+      lines.push(
+        `• ${f.business_name ?? f.owner_name ?? 'Lead'} — ${f.days_in_stage}d in ${String(f.loi_status ?? '').replace(/_/g, ' ')}${
+          f.next_best_action ? ` · ${f.next_best_action}` : ''
+        }`.trim()
+      )
+    }
+  }
 
   if (topGainers.length) {
     lines.push('', '*Biggest priority gains:*')

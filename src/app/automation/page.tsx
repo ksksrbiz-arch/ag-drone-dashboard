@@ -73,6 +73,8 @@ export default function AutomationPage() {
   const [dupes, setDupes] = useState<DupCluster[]>([])
   const [dupBusy, setDupBusy] = useState<string | null>(null)
   const [dupMsg, setDupMsg] = useState<string | null>(null)
+  const [followups, setFollowups] = useState<any[]>([])
+  const [heating, setHeating] = useState<any[]>([])
 
   const loadLeads = useCallback(async () => {
     const { data } = await supabase.from('leads').select('*')
@@ -146,6 +148,18 @@ export default function AutomationPage() {
     setNextActions((data ?? []) as Lead[])
   }, [])
 
+  // v4 intelligence views — follow-up SLAs + sustained risers. Resolve empty
+  // if the v4 migration / score history isn't present yet.
+  const loadFollowups = useCallback(async () => {
+    const { data } = await supabase.from('lead_followups').select('*').limit(8)
+    setFollowups(data ?? [])
+  }, [])
+
+  const loadHeating = useCallback(async () => {
+    const { data } = await supabase.from('lead_heating_up').select('*').limit(8)
+    setHeating(data ?? [])
+  }, [])
+
   const loadRuns = useCallback(async () => {
     const { data } = await supabase
       .from('enrichment_runs')
@@ -172,6 +186,8 @@ export default function AutomationPage() {
       loadStatus(),
       loadNextActions(),
       loadDupes(),
+      loadFollowups(),
+      loadHeating(),
     ]).then(() => setLoading(false))
 
     // Best-effort realtime so the board updates as the engine writes back.
@@ -180,6 +196,8 @@ export default function AutomationPage() {
       const onLeads = () => {
         loadLeads()
         loadNextActions()
+        loadFollowups()
+        loadHeating()
       }
       channel = supabase
         .channel('automation')
@@ -192,7 +210,7 @@ export default function AutomationPage() {
     return () => {
       if (channel) supabase.removeChannel(channel)
     }
-  }, [loadLeads, loadRuns, loadStatus, loadNextActions, loadDupes])
+  }, [loadLeads, loadRuns, loadStatus, loadNextActions, loadDupes, loadFollowups, loadHeating])
 
   async function runNow() {
     setRunning(true)
@@ -210,7 +228,7 @@ export default function AutomationPage() {
             `${json.aiCalls} AI call(s) · ${(json.durationMs / 1000).toFixed(1)}s`
         )
       }
-      await Promise.all([loadLeads(), loadRuns(), loadNextActions(), loadDupes()])
+      await Promise.all([loadLeads(), loadRuns(), loadNextActions(), loadDupes(), loadFollowups(), loadHeating()])
     } catch (err: any) {
       setMessage(`Run failed: ${String(err?.message ?? err)}`)
     } finally {
@@ -458,6 +476,77 @@ export default function AutomationPage() {
           </div>
         </div>
       )}
+
+      {/* Follow-ups due + Heating up — v4 intelligence views */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
+          <h2 className="text-sm font-semibold text-slate-700 mb-1">⏰ Follow-ups Due</h2>
+          <p className="text-xs text-slate-400 mb-4">
+            Engaged leads stalled past their stage SLA — re-engage before they go cold
+          </p>
+          {followups.length === 0 ? (
+            <p className="text-sm text-slate-400">Nothing overdue. 👍</p>
+          ) : (
+            <div className="space-y-2">
+              {followups.map(f => (
+                <div key={f.id} className="py-2 border-b border-slate-50 last:border-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-sm font-medium text-slate-800 truncate">
+                      {f.business_name ?? f.owner_name ?? 'Unknown'}
+                    </span>
+                    <span className="shrink-0 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                      {f.days_in_stage}d in {String(f.loi_status ?? '').replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                  {f.next_best_action && (
+                    <p className="text-xs text-brand-600 mt-0.5 line-clamp-1">→ {f.next_best_action}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
+          <h2 className="text-sm font-semibold text-slate-700 mb-1">🔥 Heating Up</h2>
+          <p className="text-xs text-slate-400 mb-4">
+            Leads whose priority rose across the last 3 scoring runs — sustained momentum
+          </p>
+          {heating.length === 0 ? (
+            <p className="text-sm text-slate-400">No sustained risers yet (needs 3+ runs of history).</p>
+          ) : (
+            <div className="space-y-2">
+              {heating.map(h => (
+                <div
+                  key={h.id}
+                  className="flex items-center justify-between gap-3 py-2 border-b border-slate-50 last:border-0"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-slate-800 truncate">
+                      {h.business_name ?? h.owner_name ?? 'Unknown'}
+                    </div>
+                    <div className="text-xs text-slate-500 truncate">
+                      {[h.city, h.primary_crop].filter(Boolean).join(' · ') || '—'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-medium text-green-600 tabular-nums">▲ +{h.rise_3}</span>
+                    {h.priority_tier && (
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+                          TIER_META[h.priority_tier as PriorityTier]?.cls ?? ''
+                        }`}
+                      >
+                        {h.priority_tier}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Next best actions — from the Supabase intelligence view */}
       {nextActions.length > 0 && (

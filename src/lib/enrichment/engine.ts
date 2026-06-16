@@ -107,6 +107,10 @@ export async function runEnrichment(opts: RunOptions): Promise<EngineRunSummary>
   const movers = topMovers(outcomes, nameById)
   const durationMs = Date.now() - startedAt
 
+  // Snapshot each scored lead so the dashboard can trend priority over time
+  // (v4 score history). Best-effort — a missing table just skips the write.
+  await recordHistory(supabase, runId, outcomes)
+
   if (runId) {
     try {
       await supabase
@@ -495,6 +499,29 @@ function topMovers(
 
 function leadName(l: Lead): string {
   return l.business_name ?? l.owner_name ?? l.contact_name ?? 'Unknown'
+}
+
+// Append a score snapshot per scored lead → the v4 history timeline.
+async function recordHistory(
+  supabase: ReturnType<typeof getAdminClient>,
+  runId: string | null,
+  outcomes: LeadEnrichmentOutcome[]
+): Promise<void> {
+  const rows = outcomes
+    .filter(o => o.priority_score != null)
+    .map(o => ({
+      lead_id: o.id,
+      run_id: runId,
+      score: o.priority_score,
+      tier: o.priority_tier,
+      delta: o.priority_delta,
+    }))
+  if (!rows.length) return
+  try {
+    await supabase.from('lead_score_history').insert(rows)
+  } catch {
+    /* history table not migrated yet — skip */
+  }
 }
 
 function omit(
