@@ -31,6 +31,10 @@ export async function buildDigest(): Promise<Digest> {
   const { count: heatingCount } = await supabase
     .from('lead_heating_up')
     .select('id', { count: 'exact', head: true })
+  const { data: coolingData } = await supabase
+    .from('lead_cooling_off')
+    .select('business_name,owner_name,city,priority_tier,drop_3,next_best_action')
+  const cooling = (coolingData ?? []) as any[]
 
   const p1 = leads.filter(l => l.priority_tier === 'P1')
   const treatNow = leads.filter(l => l.action_recommendation === 'TREAT_NOW')
@@ -73,6 +77,7 @@ export async function buildDigest(): Promise<Digest> {
     needs_enrichment: needsEnrichment.length,
     followups_due: followups.length,
     heating_up: heatingCount ?? 0,
+    at_risk: cooling.length,
     scheduled_today: scheduledToday.length,
     outstanding_ar: Math.round(outstandingAR),
   }
@@ -83,7 +88,7 @@ export async function buildDigest(): Promise<Digest> {
     `🌤️ ${sprayLine}`,
     `🔴 Treat-now leads: *${counts.treat_now}*`,
     `⭐ P1 priority leads: *${counts.p1}*${counts.new_p1 ? ` (📈 ${counts.new_p1} newly risen)` : ''}`,
-    `⏰ Follow-ups due: *${counts.followups_due}*${counts.heating_up ? ` · 🔥 ${counts.heating_up} heating up` : ''}`,
+    `⏰ Follow-ups due: *${counts.followups_due}*${counts.heating_up ? ` · 🔥 ${counts.heating_up} heating up` : ''}${counts.at_risk ? ` · ⚠️ ${counts.at_risk} at risk` : ''}`,
     `📅 Jobs scheduled today: *${counts.scheduled_today}*`,
     `🤖 Leads awaiting research: *${counts.needs_enrichment}*`,
     `💵 Outstanding A/R: *$${counts.outstanding_ar.toLocaleString()}*`,
@@ -105,6 +110,17 @@ export async function buildDigest(): Promise<Digest> {
     for (const l of topGainers) {
       lines.push(
         `• ${l.business_name ?? l.owner_name ?? 'Lead'} — +${l.priority_delta} → ${l.priority_score} (${l.priority_tier})`
+      )
+    }
+  }
+
+  if (cooling.length) {
+    lines.push('', '*⚠️ At risk (cooling off):*')
+    for (const c of cooling.slice(0, 5)) {
+      lines.push(
+        `• ${c.business_name ?? c.owner_name ?? 'Lead'} — −${c.drop_3} (${c.priority_tier ?? '—'})${
+          c.next_best_action ? ` · ${c.next_best_action}` : ''
+        }`.trim()
       )
     }
   }

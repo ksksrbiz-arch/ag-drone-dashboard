@@ -67,6 +67,9 @@ that history durable and turns it into action:
 - **"Heating up"** — the `lead_heating_up` view flags leads whose score rose across
   the **last 3 runs** (a sustained riser, not a one-run blip). Shown on the
   Automation page and counted in the digest. *Needs ~3 runs of history to populate.*
+- **At-Risk Radar** — its mirror, `lead_cooling_off`, flags still-winnable P1–P3
+  leads whose score **fell across the last 3 runs** so high-value deals losing
+  momentum surface before they're lost (Automation panel + a digest "at risk" section).
 - **Follow-up SLAs** — a `stage_changed_at` timestamp (set by trigger when a lead's
   pipeline stage changes) powers `lead_followups`: engaged leads that have stalled
   past a per-stage SLA (`contacted` 5d · `meeting_scheduled` 3d · `loi_sent` 7d).
@@ -146,8 +149,9 @@ ever sent automatically**. Each lead is queued at most once while a draft is ope
   advisory, token columns, refreshed views + `lead_priority_movers`), and
   `20260616000000_lead_intel_v4.sql` (`lead_score_history`, `stage_changed_at` +
   trigger, and the `lead_followups` / `lead_heating_up` views), and
-  `20260616010000_outreach_queue.sql` (the `outreach_drafts` table). All additive
-  and safe to re-run.
+  `20260616010000_outreach_queue.sql` (the `outreach_drafts` table), and
+  `20260616050000_lead_cooling_off.sql` (the at-risk `lead_cooling_off` view).
+  All additive and safe to re-run.
 - **Tuning (env):** `ENRICHMENT_BATCH_SIZE`, `ENRICHMENT_CONCURRENCY`,
   `ENRICHMENT_STALE_DAYS`, `ENRICHMENT_RETRIES`, `ENRICHMENT_AUTOTAG`,
   `ENRICHMENT_MODEL` (display/compat). Optional `APOLLO_API_KEY` for contact data.

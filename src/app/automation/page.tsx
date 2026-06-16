@@ -75,6 +75,7 @@ export default function AutomationPage() {
   const [dupMsg, setDupMsg] = useState<string | null>(null)
   const [followups, setFollowups] = useState<any[]>([])
   const [heating, setHeating] = useState<any[]>([])
+  const [cooling, setCooling] = useState<any[]>([])
 
   const loadLeads = useCallback(async () => {
     const { data } = await supabase.from('leads').select('*')
@@ -160,6 +161,11 @@ export default function AutomationPage() {
     setHeating(data ?? [])
   }, [])
 
+  const loadCooling = useCallback(async () => {
+    const { data } = await supabase.from('lead_cooling_off').select('*').limit(8)
+    setCooling(data ?? [])
+  }, [])
+
   const loadRuns = useCallback(async () => {
     const { data } = await supabase
       .from('enrichment_runs')
@@ -188,6 +194,7 @@ export default function AutomationPage() {
       loadDupes(),
       loadFollowups(),
       loadHeating(),
+      loadCooling(),
     ]).then(() => setLoading(false))
 
     // Best-effort realtime so the board updates as the engine writes back.
@@ -198,6 +205,7 @@ export default function AutomationPage() {
         loadNextActions()
         loadFollowups()
         loadHeating()
+        loadCooling()
       }
       channel = supabase
         .channel('automation')
@@ -210,7 +218,7 @@ export default function AutomationPage() {
     return () => {
       if (channel) supabase.removeChannel(channel)
     }
-  }, [loadLeads, loadRuns, loadStatus, loadNextActions, loadDupes, loadFollowups, loadHeating])
+  }, [loadLeads, loadRuns, loadStatus, loadNextActions, loadDupes, loadFollowups, loadHeating, loadCooling])
 
   async function runNow() {
     setRunning(true)
@@ -228,7 +236,7 @@ export default function AutomationPage() {
             `${json.aiCalls} AI call(s) · ${(json.durationMs / 1000).toFixed(1)}s`
         )
       }
-      await Promise.all([loadLeads(), loadRuns(), loadNextActions(), loadDupes(), loadFollowups(), loadHeating()])
+      await Promise.all([loadLeads(), loadRuns(), loadNextActions(), loadDupes(), loadFollowups(), loadHeating(), loadCooling()])
     } catch (err: any) {
       setMessage(`Run failed: ${String(err?.message ?? err)}`)
     } finally {
@@ -547,6 +555,46 @@ export default function AutomationPage() {
           )}
         </div>
       </div>
+
+      {/* At-risk radar — high-value leads cooling off (mirror of Heating Up) */}
+      {cooling.length > 0 && (
+        <div className="bg-white rounded-xl border border-red-200 p-5 shadow-card">
+          <h2 className="text-sm font-semibold text-slate-700 mb-1">⚠️ At Risk — Cooling Off</h2>
+          <p className="text-xs text-slate-400 mb-4">
+            Still-winnable P1–P3 leads whose priority fell across the last 3 runs — re-engage before they're lost
+          </p>
+          <div className="space-y-2">
+            {cooling.map(c => (
+              <div
+                key={c.id}
+                className="flex items-center justify-between gap-3 py-2 border-b border-slate-50 last:border-0"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-slate-800 truncate">
+                    {c.business_name ?? c.owner_name ?? 'Unknown'}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {[c.city, c.primary_crop].filter(Boolean).join(' · ') || '—'}
+                    {c.next_best_action && <span className="text-brand-600"> · → {c.next_best_action}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs font-medium text-red-500 tabular-nums">▼ −{c.drop_3}</span>
+                  {c.priority_tier && (
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+                        TIER_META[c.priority_tier as PriorityTier]?.cls ?? ''
+                      }`}
+                    >
+                      {c.priority_tier}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Next best actions — from the Supabase intelligence view */}
       {nextActions.length > 0 && (
