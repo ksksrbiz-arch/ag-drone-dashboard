@@ -196,6 +196,14 @@ export default function SchedulePage() {
               <div className="flex items-center gap-2 mb-2">
                 <h2 className={`text-sm font-semibold ${key === 'unscheduled' ? 'text-amber-700' : 'text-slate-700'}`}>{dayLabel(key)}</h2>
                 <span className="text-xs text-slate-400">{dayJobs.length}</span>
+                {key !== 'unscheduled' && weather[key] && (
+                  <span
+                    className={`text-[11px] ${FLY_META[weather[key].rating].cls}`}
+                    title={`${FLY_META[weather[key].rating].label} · wind ${Math.round(weather[key].windMax)}mph, gust ${Math.round(weather[key].gustMax)}mph, precip ${weather[key].precipProb}%${weather[key].reasons.length ? ' — ' + weather[key].reasons.join(', ') : ''}`}
+                  >
+                    {FLY_META[weather[key].rating].dot} {FLY_META[weather[key].rating].label} · {Math.round(weather[key].windMax)}mph
+                  </span>
+                )}
               </div>
               <div className="space-y-2">
                 {dayJobs.map(job => (
