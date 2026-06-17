@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRole } from '@/lib/auth/role'
 
 interface Activity {
   id?: string
@@ -41,6 +42,7 @@ export function ActivityTimeline({
   entityType: 'lead' | 'customer' | 'job'
   entityId: string
 }) {
+  const { isStaff } = useRole()
   const [items, setItems] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
   const [kind, setKind] = useState('note')
@@ -89,6 +91,7 @@ export function ActivityTimeline({
         {items.length > 0 && <span className="text-[11px] text-slate-400">{items.length}</span>}
       </div>
 
+      {isStaff && (
       <form onSubmit={add} className="mb-3">
         <div className="flex gap-1.5 mb-1.5">
           {ADD_KINDS.map(k => (
@@ -113,11 +116,12 @@ export function ActivityTimeline({
         </div>
         {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
       </form>
+      )}
 
       {loading ? (
         <p className="text-xs text-slate-400">Loading…</p>
       ) : items.length === 0 ? (
-        <p className="text-xs text-slate-400">No activity yet — log the first call, email, or note above.</p>
+        <p className="text-xs text-slate-400">{isStaff ? 'No activity yet — log the first call, email, or note above.' : 'No activity yet.'}</p>
       ) : (
         <ul className="space-y-2.5">
           {items.map((a, i) => {

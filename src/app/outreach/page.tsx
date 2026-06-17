@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { OutreachDraft, OutreachStatus, PriorityTier } from '@/lib/supabase'
+import { useRole } from '@/lib/auth/role'
 
 // A draft row with the linked lead's display fields embedded (from the API).
 type LeadEmbed = {
@@ -32,6 +33,7 @@ const STATUS_META: Record<OutreachStatus, string> = {
 const TABS: (OutreachStatus | 'all')[] = ['all', 'draft', 'approved', 'sent', 'dismissed']
 
 export default function OutreachPage() {
+  const { isStaff } = useRole()
   const [drafts, setDrafts] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<OutreachStatus | 'all'>('draft')
@@ -162,6 +164,7 @@ export default function OutreachPage() {
               </button>
             ))}
           </div>
+          {isStaff && (
           <button
             onClick={generate}
             disabled={generating}
@@ -169,6 +172,7 @@ export default function OutreachPage() {
           >
             {generating ? 'Drafting…' : '⚡ Generate drafts'}
           </button>
+          )}
         </div>
       </div>
 
