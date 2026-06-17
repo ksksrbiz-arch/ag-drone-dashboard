@@ -85,6 +85,8 @@ export default function LeadsPage() {
   const [view, setView] = useState<'table' | 'map'>('table')
   const [mapColorBy, setMapColorBy] = useState<ColorBy>('priority')
   const [mapBasemap, setMapBasemap] = useState<Basemap>('streets')
+  const [geocoding, setGeocoding] = useState(false)
+  const [geoMsg, setGeoMsg] = useState<string | null>(null)
 
   useEffect(() => {
     supabase
@@ -149,6 +151,32 @@ export default function LeadsPage() {
     if (q) setSearch(q)
     if (Object.keys(af).length) setAiFilter(af)
   }, [])
+
+  // Geocode leads that are missing coordinates (any vertical) via the free
+  // Census backfill, then refresh so the new pins appear on the map.
+  async function geocodeLeads() {
+    setGeocoding(true)
+    setGeoMsg(null)
+    try {
+      const res = await fetch('/api/efb/geocode?limit=2000', { method: 'POST' })
+      const json = await res.json()
+      if (res.ok && json.ok) {
+        const { data } = await supabase.from('leads').select('*').order('lead_score', { ascending: false })
+        setLeads(data ?? [])
+        setGeoMsg(
+          json.updated > 0
+            ? `Mapped ${json.updated} more lead(s).`
+            : `No new matches — ${json.attempted} address(es) tried (rural/PO-box addresses may not geocode).`
+        )
+      } else {
+        setGeoMsg(`Geocode failed: ${json.error ?? res.statusText}`)
+      }
+    } catch (err: any) {
+      setGeoMsg(`Geocode failed: ${String(err?.message ?? err)}`)
+    } finally {
+      setGeocoding(false)
+    }
+  }
 
   async function structureNotes() {
     if (!rawNotes.trim() || notesBusy || !selected) return
@@ -422,10 +450,25 @@ export default function LeadsPage() {
             >
               {BASEMAP_OPTIONS.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
             </select>
+            {isStaff && (
+              <button
+                type="button"
+                onClick={geocodeLeads}
+                disabled={geocoding}
+                title="Geocode leads missing coordinates so they appear on the map"
+                className="tap inline-flex items-center text-sm border border-slate-200 hover:border-brand-300 hover:text-brand-700 rounded-lg px-3 py-2 font-medium transition-colors disabled:opacity-60"
+              >
+                {geocoding ? 'Geocoding…' : `📍 Geocode${leads.filter(l => l.lat == null).length ? ` (${leads.filter(l => l.lat == null).length})` : ''}`}
+              </button>
+            )}
           </>
         )}
         </div>
       </div>
+
+      {geoMsg && (
+        <div className="mb-3 text-xs rounded-lg border border-brand-200 bg-brand-50 text-brand-800 px-3 py-2">{geoMsg}</div>
+      )}
 
       <div className="flex flex-col lg:flex-row gap-5">
         {/* Table / Map */}

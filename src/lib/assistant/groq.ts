@@ -143,8 +143,13 @@ export async function runGroqAssistant(
 
     let reply = (msg.content || '').trim()
     if (!reply) {
-      // The model occasionally returns no text after a tool call — synthesize a
-      // confirmation so the user never sees an empty bubble.
+      // Llama often returns an empty turn after tool results. Force a real,
+      // grounded answer with a tool-free follow-up (the tool results are still
+      // in context) before any canned fallback — so a genuine question never
+      // gets answered with a bare "Done." (drop the empty assistant turn first).
+      reply = (await answerWithoutTools(key, messages.slice(0, -1)).catch(() => '')).trim()
+    }
+    if (!reply) {
       reply = ctx.actions.some(a => a.type === 'navigate')
         ? 'Opening that for you.'
         : 'Done.'
