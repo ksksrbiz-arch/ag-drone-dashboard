@@ -5,11 +5,13 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-// GET  → preview the digest (no send). POST → build and post to Slack.
-export async function GET() {
+// GET  → preview the digest (no send). Add ?narrate=1 for an AI-narrated brief.
+// POST → build and post to Slack.
+export async function GET(req: NextRequest) {
   try {
     const digest = await buildDigest()
-    return NextResponse.json({ ok: true, ...digest, slackConfigured: !!process.env.SLACK_WEBHOOK_URL })
+    const narrated = new URL(req.url).searchParams.get('narrate') ? await narrateDigest(digest) : null
+    return NextResponse.json({ ok: true, ...digest, narrated, slackConfigured: !!process.env.SLACK_WEBHOOK_URL })
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 })
   }
