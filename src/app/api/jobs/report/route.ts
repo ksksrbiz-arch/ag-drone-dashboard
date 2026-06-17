@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabaseAdmin'
 import { cheapComplete, aiConfigured } from '@/lib/ai/llm'
 import { COMPANY_CONTEXT } from '@/lib/enrichment/config'
+import { INDUSTRY_DESC } from '@/lib/business'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const report = await cheapComplete({
-      system: `You write concise, professional job completion reports (spray logs) for a drone-spraying ag-services business. ${COMPANY_CONTEXT}\nUse ONLY the data provided — never invent chemicals, application rates, weather, or acreage not given. Format: a one-line title, then short labeled lines (Date, Location, Crop/Service, Pilot, Equipment, Deliverables), then a 1-2 sentence professional summary suitable to send to the customer.`,
+      system: `You write concise, professional job completion reports for ${INDUSTRY_DESC}. ${COMPANY_CONTEXT}\nUse ONLY the data provided — never invent materials, rates, weather, or acreage not given. Format: a one-line title, then short labeled lines (Date, Location, Service, Pilot, Equipment, Deliverables), then a 1-2 sentence professional summary suitable to send to the customer.`,
       user: `${facts}${context ? `\n${context}` : ''}`,
       maxTokens: 500,
       temperature: 0.3,

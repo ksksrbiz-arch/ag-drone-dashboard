@@ -21,6 +21,7 @@ import {
 } from '@/lib/efb/scoring'
 import { acresAtRisk, actionOf } from '@/lib/efb/analytics'
 import { setSidekickFocus } from '@/lib/assistant/context'
+import { INTEL_TITLE } from '@/lib/business'
 import type { RiskMetric, Basemap, SizeMode } from '@/components/intel/RiskMap'
 
 // Leaflet touches `window`, so load the map client-side only with a skeleton
@@ -183,7 +184,7 @@ export default function IntelPage() {
     <div className="p-4 sm:p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">EFB Intelligence Hub</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{INTEL_TITLE}</h1>
           <p className="text-slate-500 text-sm mt-0.5">
             Composite risk from 10m CDL · PRISM weather · leaf-wetness · NDRE trend · ML model
           </p>

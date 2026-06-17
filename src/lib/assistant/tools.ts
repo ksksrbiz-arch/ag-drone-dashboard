@@ -1079,7 +1079,7 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       const { aiConfigured, cheapComplete } = await import('@/lib/ai/llm')
       if (!aiConfigured()) return { error: 'No AI provider configured for drafting.' }
       const { COMPANY_CONTEXT } = await import('@/lib/enrichment/config')
-      const { OUTREACH_SIGNOFF } = await import('@/lib/business')
+      const { OUTREACH_SIGNOFF, INDUSTRY_DESC } = await import('@/lib/business')
       const facts = (
         [
           ['Business', l.business_name],
@@ -1102,7 +1102,7 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
           : `Write a short outreach email. First line is the subject, prefixed exactly "Subject:". Then 3-5 short sentences, warm and professional, with one clear call to action. Sign off as "${OUTREACH_SIGNOFF}" — keep any bracketed placeholder verbatim.`
       try {
         const draft = await cheapComplete({
-          system: `You write first-touch outreach for a drone-spraying ag-services business. ${COMPANY_CONTEXT}\nGoal: earn a reply that leads to a spray/scouting job or a short call. Be specific to this lead's crop and situation. Never fabricate prices, guarantees, or facts not provided. ${channelRule}`,
+          system: `You write first-touch outreach for ${INDUSTRY_DESC}. ${COMPANY_CONTEXT}\nGoal: earn a reply that leads to a job or a short call. Be specific to this lead's situation. Never fabricate prices, guarantees, or facts not provided. ${channelRule}`,
           user: `Draft a ${channel} to this lead:\n${facts}`,
           maxTokens: 500,
           temperature: 0.6,

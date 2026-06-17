@@ -1,7 +1,7 @@
 import type { Lead } from '@/lib/supabase'
 import { cheapComplete } from '@/lib/ai/llm'
 import { COMPANY_CONTEXT } from '@/lib/enrichment/config'
-import { OUTREACH_SIGNOFF } from '@/lib/business'
+import { OUTREACH_SIGNOFF, INDUSTRY_DESC } from '@/lib/business'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Shared outreach drafting — used by the per-lead "Draft outreach" action
@@ -55,7 +55,7 @@ export async function composeOutreachText(
       : `Write a short outreach email. First line is the subject, prefixed exactly "Subject:". Then 3-5 short sentences, warm and professional, with one clear call to action. Sign off as "${OUTREACH_SIGNOFF}" — keep any bracketed placeholder (e.g. [Your name]) verbatim for the sender to fill in.`
 
   return cheapComplete({
-    system: `You write first-touch outreach for a drone-spraying ag-services business. ${COMPANY_CONTEXT}\nGoal: earn a reply that leads to a spray/scouting job or a short call. Be specific to this lead's crop and situation, and lean on the recommended approach / talking points when present. Never fabricate prices, guarantees, or facts not provided. ${channelRule}`,
+    system: `You write first-touch outreach for ${INDUSTRY_DESC}. ${COMPANY_CONTEXT}\nGoal: earn a reply that leads to a job or a short call. Be specific to this lead's situation, and lean on the recommended approach / talking points when present. Never fabricate prices, guarantees, or facts not provided. ${channelRule}`,
     user: `Draft a ${channel} to this lead:\n${leadFacts(lead)}`,
     maxTokens: 500,
     temperature: 0.6,
