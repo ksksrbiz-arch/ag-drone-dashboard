@@ -2,8 +2,8 @@ import type { Lead } from '@/lib/supabase'
 import { getAdminClient } from '@/lib/supabaseAdmin'
 
 // ─────────────────────────────────────────────────────────────────────────
-// Geocoding backfill — turns parcel street addresses into lat/lon so the
-// satellite risk map can actually plot them.
+// Geocoding backfill — turns lead street addresses (any vertical) into lat/lon
+// so the territory / risk maps can actually plot them.
 //
 // Uses the free U.S. Census batch geocoder (no API key, up to 10k rows/call):
 //   POST https://geocoding.geo.census.gov/geocoder/locations/addressbatch
@@ -125,14 +125,14 @@ export async function runGeocodeBackfill(opts: {
   const { writeMode } = await import('@/lib/supabaseAdmin')
   const limit = Math.min(opts.limit ?? 1000, CENSUS_MAX)
 
-  // Parcels that need coordinates and have something to geocode.
+  // Leads (any vertical) that need coordinates and have a street to geocode —
+  // highest-priority first so the most useful pins land if we hit the limit.
   const { data } = await supabase
     .from('leads')
     .select('id, address_physical, city, state, zipcode')
-    .eq('vertical', 'ag_spray')
     .is('lat', null)
     .not('address_physical', 'is', null)
-    .order('composite_efb_risk', { ascending: false, nullsFirst: false })
+    .order('priority_score', { ascending: false, nullsFirst: false })
     .limit(limit)
 
   const candidates = (data ?? []) as Pick<

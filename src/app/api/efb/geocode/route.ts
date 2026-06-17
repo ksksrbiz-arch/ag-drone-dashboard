@@ -5,9 +5,9 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-// Backfills lat/lon for ag-spray parcels from their street address via the free
-// U.S. Census batch geocoder. Triggered by the Intel Hub "Geocode parcels"
-// button and (best-effort) by the daily cron.
+// Backfills lat/lon for leads (any vertical) from their street address via the
+// free U.S. Census batch geocoder, so they appear on the territory / risk maps.
+// Triggered by the Leads/Intel "Geocode" buttons and (best-effort) the daily cron.
 async function handle(req: NextRequest) {
   if (!authorized(req)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })

@@ -194,8 +194,12 @@ export async function streamGroqAssistant(
     }
 
     if (!content.trim()) {
-      const fallback = ctx.actions.some(a => a.type === 'navigate') ? 'Opening that for you.' : 'Done.'
-      emit({ type: 'token', text: fallback })
+      // Empty turn after tool results — synthesize a grounded answer (tool
+      // results are still in context) instead of emitting a bare "Done."; fall
+      // back to a short confirmation only if even that comes back empty.
+      let reply = (await answerWithoutTools(key, messages).catch(() => '')).trim()
+      if (!reply) reply = ctx.actions.some(a => a.type === 'navigate') ? 'Opening that for you.' : 'Done.'
+      emit({ type: 'token', text: reply })
     }
     emit({ type: 'done', actions: ctx.actions, undo: ctx.undo ?? null, cards: ctx.cards ?? [] })
     return
