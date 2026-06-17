@@ -8,17 +8,22 @@ import { useRole } from '@/lib/auth/role'
 interface Candidate {
   business_name: string
   city: string | null
-  county: string | null
+  county?: string | null
+  state?: string | null
   website: string | null
   phone: string | null
-  email: string | null
+  email?: string | null
+  industry?: string | null
   notes: string | null
   dup: boolean
 }
 
+type Source = 'web' | 'apollo'
+
 export default function DiscoverPage() {
   const { isStaff } = useRole()
   const [categoryKey, setCategoryKey] = useState(DISCOVERY_CATEGORIES[0].key)
+  const [source, setSource] = useState<Source>('web')
   const [busy, setBusy] = useState<'preview' | 'add' | null>(null)
   const [result, setResult] = useState<any>(null)
   const [msg, setMsg] = useState<string | null>(null)
@@ -28,10 +33,11 @@ export default function DiscoverPage() {
     setMsg(null)
     if (dryRun) setResult(null)
     try {
-      const res = await fetch('/api/discover', {
+      const endpoint = source === 'apollo' ? '/api/discover/apollo' : '/api/discover'
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: categoryKey, dryRun, limit: 10 }),
+        body: JSON.stringify({ category: categoryKey, dryRun, limit: source === 'apollo' ? 25 : 10 }),
       })
       const json = await res.json()
       if (!res.ok || json.ok === false) {
@@ -41,7 +47,7 @@ export default function DiscoverPage() {
         if (json.found === 0) setMsg('No prospects found — try a different category.')
       } else {
         setMsg(`Added ${json.inserted} new lead(s) — they’re queued for AI research now.`)
-        setResult({ ...result, _added: true })
+        setResult((r: any) => ({ ...r, _added: true }))
       }
     } catch (err: any) {
       setMsg(`Failed: ${String(err?.message ?? err)}`)
@@ -55,11 +61,29 @@ export default function DiscoverPage() {
 
   return (
     <div className="p-4 sm:p-6 md:p-8 max-w-5xl mx-auto animate-fade">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Discover Leads</h1>
-        <p className="text-slate-500 text-sm mt-0.5">
-          AI web search finds new prospects{CITY_SHORT ? ` near ${CITY_SHORT}` : ''} · they’re auto-enriched after adding
-        </p>
+      <div className="mb-5 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Discover Leads</h1>
+          <p className="text-slate-500 text-sm mt-0.5">
+            {source === 'apollo'
+              ? `Pull prospects from Apollo's B2B database${CITY_SHORT ? ` near ${CITY_SHORT}` : ''}`
+              : `AI web search finds new prospects${CITY_SHORT ? ` near ${CITY_SHORT}` : ''}`}{' '}
+            · they’re auto-enriched after adding
+          </p>
+        </div>
+        {isStaff && (
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-medium">
+            {(['web', 'apollo'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => { setSource(s); setResult(null); setMsg(null) }}
+                className={`tap px-3 py-1.5 rounded-md transition-colors ${source === s ? 'bg-brand-500 text-white' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                {s === 'web' ? '🔍 Web' : '🚀 Apollo'}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Category picker */}
@@ -87,7 +111,7 @@ export default function DiscoverPage() {
           disabled={busy !== null}
           className="tap inline-flex items-center justify-center text-sm bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg px-4 py-2 transition-colors disabled:opacity-60 shadow-card"
         >
-          {busy === 'preview' ? 'Searching the web…' : '🔍 Find prospects'}
+          {busy === 'preview' ? (source === 'apollo' ? 'Searching Apollo…' : 'Searching the web…') : (source === 'apollo' ? '🚀 Find in Apollo' : '🔍 Find prospects')}
         </button>
         )}
         {isStaff && newCount > 0 && !result?._added && (
@@ -107,7 +131,7 @@ export default function DiscoverPage() {
         </div>
       )}
 
-      {busy === 'preview' && (
+      {busy === 'preview' && source === 'web' && (
         <p className="text-xs text-slate-400 mb-4">Web search can take 20–40 seconds…</p>
       )}
 
@@ -129,10 +153,10 @@ export default function DiscoverPage() {
                     )}
                   </div>
                   <div className="text-xs text-slate-500 truncate mt-0.5">
-                    {[c.city, c.county && `${c.county} Co.`].filter(Boolean).join(', ') || '—'}
+                    {[c.city, c.county ? `${c.county} Co.` : c.state].filter(Boolean).join(', ') || '—'}
                     {c.phone ? ` · ${c.phone}` : ''}
                   </div>
-                  {c.notes && <div className="text-xs text-slate-400 mt-1 line-clamp-2">{c.notes}</div>}
+                  {(c.notes || c.industry) && <div className="text-xs text-slate-400 mt-1 line-clamp-2">{c.notes ?? c.industry}</div>}
                 </div>
                 {c.website && (
                   <a
