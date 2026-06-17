@@ -146,7 +146,7 @@ pure) so you can see how the P1–P4 distribution shifts under the edited config
 | Page | What's new |
 | --- | --- |
 | **Automation** 🤖 | Engine health, coverage KPIs, priority distribution, top leads **with trend + next action**, **Priority Movers**, **Follow-ups Due**, **Heating Up**, Next Best Actions, **Duplicate Leads**, AI tagging, and run history **with token cost**. |
-| **Leads** | Priority column + sort, a **Table/Map toggle** (territory map of the filtered leads — click a marker to open its detail), the Intelligence panel (recommended approach, next best action, talking points, completeness, confidence, **priority sparkline**), and **Refresh intel** per lead. |
+| **Leads** | Priority column + sort, a **Table/Map toggle** (territory map of the filtered leads — click a marker to open its detail, or switch to **Counties** to click a county and filter the table to it; staff **📍 Geocode** button backfills missing pins), the Intelligence panel (recommended approach, next best action, talking points, completeness, confidence, **priority sparkline**), and **Refresh intel** per lead. |
 
 ---
 

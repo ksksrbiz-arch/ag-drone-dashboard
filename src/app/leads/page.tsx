@@ -7,7 +7,7 @@ import { setSidekickFocus } from '@/lib/assistant/context'
 import { useRole } from '@/lib/auth/role'
 import { ActivityTimeline } from '@/components/ActivityTimeline'
 import { BASEMAP_OPTIONS, type Basemap } from '@/lib/map/basemaps'
-import type { ColorBy } from '@/components/intel/LeadMap'
+import type { ColorBy, MapMode, CountyAgg } from '@/components/intel/LeadMap'
 
 // Leaflet touches `window` — load the territory map client-side only.
 const LeadMap = dynamic(() => import('@/components/intel/LeadMap'), {
@@ -87,6 +87,7 @@ export default function LeadsPage() {
   const [history, setHistory] = useState<LeadScoreHistory[]>([])
   // Table / map view + territory-map controls
   const [view, setView] = useState<'table' | 'map'>('table')
+  const [mapMode, setMapMode] = useState<MapMode>('leads')
   const [mapColorBy, setMapColorBy] = useState<ColorBy>('priority')
   const [mapBasemap, setMapBasemap] = useState<Basemap>('streets')
   const [geocoding, setGeocoding] = useState(false)
@@ -352,6 +353,32 @@ export default function LeadsPage() {
       .sort((a, b) => ((b[sortKey] as number) ?? 0) - ((a[sortKey] as number) ?? 0))
   }, [leads, vertical, loiStatus, search, sortBy, aiFilter])
 
+  // County aggregates for the map's Counties mode — derived from the currently
+  // filtered leads (centroid = average of each county's geocoded coords).
+  const mapCounties = useMemo<CountyAgg[]>(() => {
+    const m = new Map<string, { count: number; signed: number; sum: number; n: number; latSum: number; lonSum: number; geoN: number }>()
+    for (const l of filtered) {
+      const county = (l.county ?? '').trim()
+      if (!county) continue
+      const e = m.get(county) ?? { count: 0, signed: 0, sum: 0, n: 0, latSum: 0, lonSum: 0, geoN: 0 }
+      e.count++
+      if (l.loi_status === 'loi_signed') e.signed++
+      if (typeof l.priority_score === 'number') { e.sum += l.priority_score; e.n++ }
+      if (typeof l.lat === 'number' && typeof l.lon === 'number') { e.latSum += l.lat; e.lonSum += l.lon; e.geoN++ }
+      m.set(county, e)
+    }
+    return [...m.entries()].map(([county, e]) => ({
+      county,
+      count: e.count,
+      signed: e.signed,
+      avgPriority: e.n ? Math.round(e.sum / e.n) : null,
+      pipeline: 0,
+      revenue: 0,
+      lat: e.geoN ? e.latSum / e.geoN : null,
+      lon: e.geoN ? e.lonSum / e.geoN : null,
+    }))
+  }, [filtered])
+
   return (
     <div className="p-4 sm:p-6 md:p-8 max-w-screen-2xl mx-auto animate-fade">
       <div className="flex items-start justify-between mb-6">
@@ -437,16 +464,30 @@ export default function LeadsPage() {
         </div>
         {view === 'map' && (
           <>
-            <select
-              value={mapColorBy}
-              onChange={e => setMapColorBy(e.target.value as ColorBy)}
-              className="tap text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            >
-              <option value="priority">Color: Priority</option>
-              <option value="status">Color: Pipeline</option>
-              <option value="efb">Color: EFB risk</option>
-              <option value="crop">Color: Crop</option>
-            </select>
+            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+              {(['leads', 'counties'] as MapMode[]).map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMapMode(m)}
+                  className={`tap px-3 py-2 font-medium transition-colors ${mapMode === m ? 'bg-brand-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {m === 'leads' ? 'Leads' : 'Counties'}
+                </button>
+              ))}
+            </div>
+            {mapMode === 'leads' && (
+              <select
+                value={mapColorBy}
+                onChange={e => setMapColorBy(e.target.value as ColorBy)}
+                className="tap text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="priority">Color: Priority</option>
+                <option value="status">Color: Pipeline</option>
+                <option value="efb">Color: EFB risk</option>
+                <option value="crop">Color: Crop</option>
+              </select>
+            )}
             <select
               value={mapBasemap}
               onChange={e => setMapBasemap(e.target.value as Basemap)}
@@ -484,12 +525,16 @@ export default function LeadsPage() {
           ) : view === 'map' ? (
             <LeadMap
               leads={filtered}
-              counties={[]}
-              mode="leads"
+              counties={mapCounties}
+              mode={mapMode}
               colorBy={mapColorBy}
               basemap={mapBasemap}
               onSelect={setSelected}
               selectedId={selected?.id ?? null}
+              onSelectCounty={county => {
+                setAiFilter(prev => ({ ...(prev ?? {}), county }))
+                setMapMode('leads')
+              }}
             />
           ) : (
             <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden overflow-x-auto">

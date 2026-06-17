@@ -47,6 +47,8 @@ interface LeadMapProps {
   selectedId?: string | null
   /** Counties-mode bubble color metric (default 'priority'). */
   countyMetric?: CountyMetric
+  /** Optional: make counties-mode bubbles clickable (e.g. filter by county). */
+  onSelectCounty?: (county: string) => void
 }
 
 function revenueColor(rev: number, max: number): string {
@@ -122,7 +124,7 @@ const LEGENDS: Record<ColorBy, { label: string; items: [string, string][] }> = {
   crop: { label: 'Colored by crop', items: [] },
 }
 
-export default function LeadMap({ leads, counties, mode, colorBy, basemap, onSelect, selectedId, countyMetric = 'priority' }: LeadMapProps) {
+export default function LeadMap({ leads, counties, mode, colorBy, basemap, onSelect, selectedId, countyMetric = 'priority', onSelectCounty }: LeadMapProps) {
   const mapped = useMemo(() => leads.filter(hasCoords), [leads])
   const geoCounties = useMemo(
     () => counties.filter(c => typeof c.lat === 'number' && typeof c.lon === 'number') as (CountyAgg & { lat: number; lon: number })[],
@@ -180,6 +182,7 @@ export default function LeadMap({ leads, counties, mode, colorBy, basemap, onSel
                 center={[c.lat, c.lon]}
                 radius={7 + Math.sqrt(c.count / maxCount) * 22}
                 pathOptions={{ color, weight: 1.5, fillColor: color, fillOpacity: 0.45 }}
+                eventHandlers={onSelectCounty ? { click: () => onSelectCounty(c.county) } : undefined}
               >
                 <Tooltip direction="top" offset={[0, -4]}>
                   <span className="text-xs font-semibold">{c.county} County</span>
