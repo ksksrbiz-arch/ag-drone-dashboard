@@ -6,6 +6,7 @@ import { supabase, type Lead, type Vertical, type LOIStatus, type LeadScoreHisto
 import { setSidekickFocus } from '@/lib/assistant/context'
 import { useRole } from '@/lib/auth/role'
 import { ActivityTimeline } from '@/components/ActivityTimeline'
+import { EmptyState } from '@/components/EmptyState'
 import { BASEMAP_OPTIONS, type Basemap } from '@/lib/map/basemaps'
 import type { ColorBy, MapMode, CountyAgg } from '@/components/intel/LeadMap'
 
@@ -620,6 +621,13 @@ export default function LeadsPage() {
                       </td>
                     </tr>
                   ))}
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={9}>
+                        <EmptyState icon="🔍" title="No leads match your filters" hint="Try clearing the search or broadening the filters above." />
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

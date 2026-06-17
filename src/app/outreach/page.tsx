@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { OutreachDraft, OutreachStatus, PriorityTier } from '@/lib/supabase'
 import { useRole } from '@/lib/auth/role'
+import { EmptyState } from '@/components/EmptyState'
 
 // A draft row with the linked lead's display fields embedded (from the API).
 type LeadEmbed = {
@@ -203,12 +204,12 @@ export default function OutreachPage() {
           {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-40 skeleton rounded-xl" />)}
         </div>
       ) : visible.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-8 shadow-card text-center">
-          <p className="text-sm text-slate-500">
-            {tab === 'draft'
-              ? 'No drafts yet. Hit “Generate drafts” to queue outreach for your top leads.'
-              : `No ${tab} items.`}
-          </p>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-card">
+          <EmptyState
+            icon="✉️"
+            title={tab === 'draft' ? 'No drafts yet' : `No ${tab} items`}
+            hint={tab === 'draft' ? 'Hit “Generate drafts” to queue outreach for your top leads.' : undefined}
+          />
         </div>
       ) : (
         <div className="space-y-4">
