@@ -24,6 +24,10 @@ const VERTICALS: { value: Vertical | 'all'; label: string }[] = [
   { value: 'real_estate', label: '🏡 Real Estate' },
   { value: 'construction',label: '🏗️ Construction' },
   { value: 'energy',      label: '☀️ Solar & Infra' },
+  { value: 'mapping',     label: '🗺️ Mapping' },
+  { value: 'inspection',  label: '🔎 Inspection' },
+  { value: 'survey',      label: '📐 Survey' },
+  { value: 'delivery',    label: '📦 Delivery' },
 ]
 
 const LOI_STATUSES: { value: LOIStatus | 'all'; label: string }[] = [

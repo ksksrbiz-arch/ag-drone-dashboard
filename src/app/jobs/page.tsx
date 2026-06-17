@@ -23,6 +23,10 @@ const VERTICAL_LABELS: Record<string, string> = {
   real_estate: '🏡 Real Estate',
   construction:'🏗️ Construction',
   energy:      '☀️ Solar & Infra',
+  mapping:     '🗺️ Mapping',
+  inspection:  '🔎 Inspection',
+  survey:      '📐 Survey',
+  delivery:    '📦 Delivery',
 }
 
 export default function JobsPage() {

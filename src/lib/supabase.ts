@@ -11,7 +11,16 @@ export const supabase = createBrowserClient(
 
 // ─── Types matching supabase_schema.sql ────────────────────────────────────
 
-export type Vertical = 'ag_spray' | 'insurance' | 'real_estate' | 'construction' | 'energy'
+export type Vertical =
+  | 'ag_spray'
+  | 'insurance'
+  | 'real_estate'
+  | 'construction'
+  | 'energy'
+  | 'mapping'
+  | 'inspection'
+  | 'survey'
+  | 'delivery'
 export type LOIStatus =
   | 'not_contacted'
   | 'contacted'

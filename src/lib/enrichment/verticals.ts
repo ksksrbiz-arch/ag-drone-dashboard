@@ -39,6 +39,26 @@ export const VERTICAL_PROFILES: Record<Vertical, VerticalProfile> = {
     approachFocus:
       'asset count/size (panels, towers, line miles), inspection frequency & compliance needs, and the operations or asset manager to contact',
   },
+  mapping: {
+    service: 'aerial mapping & orthomosaic/3D modeling — high-resolution site maps, topographic models, and digital twins',
+    approachFocus:
+      'project area size, mapping cadence & accuracy needs, GIS/CAD deliverable requirements, and the GIS lead, planner, or project manager to contact',
+  },
+  inspection: {
+    service: 'drone inspection of structures & assets — roofs, bridges, towers, façades, and industrial equipment',
+    approachFocus:
+      'asset count/type & condition, inspection frequency & compliance/safety needs, access difficulty, and the facilities or asset manager to contact',
+  },
+  survey: {
+    service: 'aerial land surveying — boundary, topographic, and volumetric surveys at survey-grade accuracy',
+    approachFocus:
+      'parcel/site size, survey type & accuracy (RTK/PPK) needs, project timeline, and the surveyor, civil engineer, or land owner to contact',
+  },
+  delivery: {
+    service: 'drone delivery & logistics — short-haul payload transport for time-sensitive goods',
+    approachFocus:
+      'route frequency & payload weight, distance/regulatory corridor, reliability & SLA needs, and the operations or logistics manager to contact',
+  },
 }
 
 export function verticalProfile(v: Vertical | null | undefined): VerticalProfile {

@@ -55,6 +55,10 @@ const VERTICAL_LABEL: Record<string, string> = {
   real_estate: '🏡 Real Estate',
   construction: '🏗️ Construction',
   energy: '☀️ Solar & Infra',
+  mapping: '🗺️ Mapping',
+  inspection: '🔎 Inspection',
+  survey: '📐 Survey',
+  delivery: '📦 Delivery',
 }
 
 const TIER_BAR: Record<string, string> = {
