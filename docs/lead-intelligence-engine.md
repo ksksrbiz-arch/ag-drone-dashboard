@@ -120,7 +120,10 @@ the **P1–P4 tier thresholds**, stored in a single-row `scoring_config` table.
 It's **opt-in and no-op by default** — until an override is saved the engine
 uses its built-in defaults, so scoring is unchanged. `computePriority` takes an
 optional `ScoringConfig`; the engine loads it once per run. Weights are relative
-(auto-normalized), and **Reset to defaults** clears the overrides.
+(auto-normalized), and **Reset to defaults** clears the overrides. A **live
+preview** re-tiers a sample of real leads in the browser (`computePriority` is
+pure) so you can see how the P1–P4 distribution shifts under the edited config —
+"in effect" vs. "edited" — before saving.
 
 ---
 
