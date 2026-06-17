@@ -73,6 +73,76 @@ export const DISCOVERY_CATEGORIES: DiscoveryCategory[] = [
       'telecom and cell tower companies',
     ],
   },
+  {
+    key: 'ag_spray',
+    label: 'Ag spraying & scouting',
+    vertical: 'ag_spray',
+    tag: 'ag-spray',
+    prompt:
+      'orchards, vineyards, berry and hazelnut growers, nurseries, grass-seed and row-crop farms, and ag co-ops/custom applicators that need aerial spraying, fungicide/pesticide application, and crop scouting',
+    queries: [
+      'orchards and vineyards',
+      'hazelnut and berry growers',
+      'plant nurseries and grass seed farms',
+      'agricultural cooperative custom applicator',
+    ],
+  },
+  {
+    key: 'mapping',
+    label: 'Mapping & GIS',
+    vertical: 'mapping',
+    tag: 'aerial-mapping',
+    prompt:
+      'civil engineering and land-planning firms, GIS departments, municipalities and public-works agencies, and developers that need orthomosaic maps, topographic models, volumetrics, and 3D site/digital-twin deliverables',
+    queries: [
+      'civil engineering firms',
+      'land planning and GIS consultants',
+      'city public works department',
+      'land developers',
+    ],
+  },
+  {
+    key: 'inspection',
+    label: 'Structure & asset inspection',
+    vertical: 'inspection',
+    tag: 'asset-inspection',
+    prompt:
+      'industrial plants and facility owners, bridge/infrastructure and DOT contractors, commercial property and tower owners, and engineering firms that need drone inspection of roofs, structures, towers, façades, and hard-to-access equipment',
+    queries: [
+      'industrial facility maintenance',
+      'bridge and infrastructure inspection contractors',
+      'commercial property management',
+      'structural engineering firms',
+    ],
+  },
+  {
+    key: 'survey',
+    label: 'Land survey',
+    vertical: 'survey',
+    tag: 'aerial-survey',
+    prompt:
+      'land surveying companies, civil engineers, title and land-development firms, and large landowners that need survey-grade aerial boundary, topographic, and volumetric surveys (RTK/PPK accuracy)',
+    queries: [
+      'land surveying companies',
+      'civil engineering and surveying',
+      'land development firms',
+      'topographic survey services',
+    ],
+  },
+  {
+    key: 'delivery',
+    label: 'Drone delivery & logistics',
+    vertical: 'delivery',
+    tag: 'drone-delivery',
+    prompt:
+      'medical/lab and pharmacy couriers, time-sensitive logistics and last-mile delivery operators, and retailers/distributors that could use short-haul drone delivery for payload transport',
+    queries: [
+      'medical courier and lab logistics',
+      'last mile delivery companies',
+      'same day courier services',
+      'logistics and distribution companies',
+    ],
+  },
 ]
 
 export const categoryByKey = (key: string) => DISCOVERY_CATEGORIES.find(c => c.key === key)
