@@ -93,7 +93,7 @@ export default function Sidebar() {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
   // The login / auth pages render standalone (no app chrome).
-  if (pathname.startsWith('/login') || pathname.startsWith('/auth')) return null
+  if (pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/quote')) return null
   return (
     <>
       {/* Mobile top bar */}

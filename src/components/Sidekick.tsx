@@ -138,7 +138,7 @@ export default function Sidekick() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAsk, open, sending])
 
-  if (pathname.startsWith('/login') || pathname.startsWith('/auth')) return null
+  if (pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/quote')) return null
 
   function runActions(actions: ClientAction[] | undefined) {
     if (!Array.isArray(actions)) return
