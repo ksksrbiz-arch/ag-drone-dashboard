@@ -40,6 +40,7 @@ interface Analytics {
   }
   tiers: Record<string, number>
   funnel: { stage: string; label: string; count: number; pct: number }[]
+  stageAge: { stage: string; label: string; count: number; avgDays: number | null }[]
   runs: { date: string; leadsProcessed: number; leadsEnriched: number; aiCalls: number; aiTokens: number; durationMs: number }[]
   scoreTrend: { date: string; avgScore: number | null; p1: number; p2: number; p3: number; p4: number }[]
   topCrops: { crop: string; count: number; avgPriority: number | null }[]
@@ -131,6 +132,7 @@ export default function AnalyticsPage() {
     label: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
   }))
   const maxFunnel = Math.max(1, ...data.funnel.map(f => f.count))
+  const maxStageDays = Math.max(1, ...data.stageAge.map(s => s.avgDays ?? 0))
   const scoredTotal = Object.values(data.tiers).reduce((s, n) => s + n, 0) || 1
 
   return (
@@ -354,6 +356,35 @@ export default function AnalyticsPage() {
           ))}
         </div>
       </div>
+
+      {/* Avg time in stage — stall detector */}
+      {data.stageAge.some(s => s.count > 0) && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
+          <h2 className="text-sm font-semibold text-slate-700 mb-1">Avg Time in Stage</h2>
+          <p className="text-xs text-slate-400 mb-4">
+            How long open leads have sat in their current stage — longer bars mean deals stalling (red ≥ 14 days).
+          </p>
+          <div className="space-y-3">
+            {data.stageAge.map(s => {
+              const pct = s.avgDays != null ? Math.round((s.avgDays / maxStageDays) * 100) : 0
+              const hot = (s.avgDays ?? 0) >= 14
+              return (
+                <div key={s.stage}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-slate-600">
+                      {s.label} <span className="text-slate-400">· {s.count}</span>
+                    </span>
+                    <span className="text-slate-900 font-medium">{s.avgDays != null ? `${s.avgDays}d avg` : '—'}</span>
+                  </div>
+                  <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${hot ? 'bg-red-400' : 'bg-brand-500'}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Tier distribution + top crops */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

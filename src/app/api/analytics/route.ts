@@ -26,7 +26,7 @@ export async function GET() {
       .from('enrichment_runs')
       .select('started_at,leads_processed,leads_enriched,ai_calls,ai_tokens,duration_ms,status')
       .order('started_at', { ascending: true }),
-    supabase.from('leads').select('priority_score,priority_tier,loi_status,primary_crop,enrichment_status,county,vertical,est_annual_revenue,lat,lon'),
+    supabase.from('leads').select('priority_score,priority_tier,loi_status,primary_crop,enrichment_status,county,vertical,est_annual_revenue,lat,lon,stage_changed_at'),
     supabase.from('jobs').select('status,paid_amount,invoice_amount,county'),
     supabase.from('customers').select('id', { count: 'exact', head: true }),
     // Score-history snapshots for the portfolio trend (last 45 days; empty if
@@ -86,6 +86,8 @@ export async function GET() {
   let scoreN = 0
   let enriched = 0
   const stageCounts: Record<string, number> = {}
+  const stageAgeAcc: Record<string, { sum: number; n: number }> = {}
+  const now = Date.now()
   for (const l of leads) {
     if (l.priority_tier && tiers[l.priority_tier] != null) tiers[l.priority_tier]++
     if (typeof l.priority_score === 'number') {
@@ -93,7 +95,19 @@ export async function GET() {
       scoreN++
     }
     if (l.enrichment_status === 'enriched') enriched++
-    if (l.loi_status) stageCounts[l.loi_status] = (stageCounts[l.loi_status] ?? 0) + 1
+    if (l.loi_status) {
+      stageCounts[l.loi_status] = (stageCounts[l.loi_status] ?? 0) + 1
+      // Days the lead has sat in its current stage (since stage_changed_at).
+      if (l.stage_changed_at) {
+        const days = (now - Date.parse(l.stage_changed_at)) / 86400000
+        if (Number.isFinite(days)) {
+          const a = stageAgeAcc[l.loi_status] ?? { sum: 0, n: 0 }
+          a.sum += Math.max(0, days)
+          a.n++
+          stageAgeAcc[l.loi_status] = a
+        }
+      }
+    }
   }
   const totalLeads = leads.length
   const avgPriority = scoreN ? Math.round(scoreSum / scoreN) : null
@@ -106,6 +120,14 @@ export async function GET() {
     pct: totalLeads ? Math.round(((stageCounts[s.key] ?? 0) / totalLeads) * 100) : 0,
   }))
   const declined = stageCounts['declined'] ?? 0
+
+  // Avg days leads have sat in each *active* stage (contacted → loi_sent) — a
+  // stall detector. (not_contacted/loi_signed are endpoints, less actionable.)
+  const stageAge = (['contacted', 'meeting_scheduled', 'loi_sent'] as const).map(key => {
+    const a = stageAgeAcc[key]
+    const label = FUNNEL_STAGES.find(s => s.key === key)?.label ?? key
+    return { stage: key, label, count: stageCounts[key] ?? 0, avgDays: a && a.n ? Math.round(a.sum / a.n) : null }
+  })
 
   // ── Top crops by lead count (with average priority) ──────────────────────
   const cropMap = new Map<string, { count: number; sum: number; n: number }>()
@@ -204,6 +226,7 @@ export async function GET() {
     },
     tiers,
     funnel,
+    stageAge,
     runs: runSeries,
     scoreTrend,
     topCrops,
