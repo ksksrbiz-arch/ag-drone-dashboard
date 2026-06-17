@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { DISCOVERY_CATEGORIES } from '@/lib/discovery/categories'
 import { CITY_SHORT } from '@/lib/business'
+import { useRole } from '@/lib/auth/role'
 
 interface Candidate {
   business_name: string
@@ -16,6 +17,7 @@ interface Candidate {
 }
 
 export default function DiscoverPage() {
+  const { isStaff } = useRole()
   const [categoryKey, setCategoryKey] = useState(DISCOVERY_CATEGORIES[0].key)
   const [busy, setBusy] = useState<'preview' | 'add' | null>(null)
   const [result, setResult] = useState<any>(null)
@@ -79,6 +81,7 @@ export default function DiscoverPage() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
+        {isStaff && (
         <button
           onClick={() => run(true)}
           disabled={busy !== null}
@@ -86,7 +89,8 @@ export default function DiscoverPage() {
         >
           {busy === 'preview' ? 'Searching the web…' : '🔍 Find prospects'}
         </button>
-        {newCount > 0 && !result?._added && (
+        )}
+        {isStaff && newCount > 0 && !result?._added && (
           <button
             onClick={() => run(false)}
             disabled={busy !== null}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { supabase, type Alert } from '@/lib/supabase'
+import { useRole } from '@/lib/auth/role'
 
 const SEVERITY_META: Record<
   Alert['severity'],
@@ -13,6 +14,7 @@ const SEVERITY_META: Record<
 }
 
 export default function AlertsPage() {
+  const { isStaff } = useRole()
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'unread' | 'all'>('unread')
@@ -83,6 +85,7 @@ export default function AlertsPage() {
             Urgent lead transitions + the daily ops digest
           </p>
         </div>
+        {isStaff && (
         <button
           onClick={sendDigest}
           disabled={sending}
@@ -90,6 +93,7 @@ export default function AlertsPage() {
         >
           {sending ? 'Sending…' : '📨 Send digest now'}
         </button>
+        )}
       </div>
 
       {digestMsg && (
@@ -112,7 +116,7 @@ export default function AlertsPage() {
             </button>
           ))}
         </div>
-        {unreadCount > 0 && (
+        {isStaff && unreadCount > 0 && (
           <button
             onClick={markAllRead}
             className="tap inline-flex items-center text-xs text-slate-500 hover:text-slate-700"

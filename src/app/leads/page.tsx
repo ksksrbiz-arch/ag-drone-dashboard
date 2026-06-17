@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import { supabase, type Lead, type Vertical, type LOIStatus, type LeadScoreHistory } from '@/lib/supabase'
 import { setSidekickFocus } from '@/lib/assistant/context'
+import { useRole } from '@/lib/auth/role'
 import { ActivityTimeline } from '@/components/ActivityTimeline'
 import { BASEMAP_OPTIONS, type Basemap } from '@/lib/map/basemaps'
 import type { ColorBy } from '@/components/intel/LeadMap'
@@ -59,6 +60,7 @@ const LOI_COLORS: Record<string, string> = {
 }
 
 export default function LeadsPage() {
+  const { isStaff } = useRole()
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -651,6 +653,7 @@ export default function LeadsPage() {
               </Section>
             )}
 
+            {isStaff && (<>
             <button
               onClick={() => refreshIntel(selected)}
               disabled={refreshing}
@@ -748,6 +751,7 @@ export default function LeadsPage() {
                   </div>
                 ))}
             </div>
+            </>)}
           </div>
         )}
       </div>

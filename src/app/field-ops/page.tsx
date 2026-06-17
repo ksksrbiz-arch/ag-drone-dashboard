@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase, type Job } from '@/lib/supabase'
 import { fetchSprayWindows, type SprayDay, type SprayRating } from '@/lib/weather'
 import { BUSINESS } from '@/lib/business'
+import { useRole } from '@/lib/auth/role'
 
 const RATING_META: Record<
   SprayRating,
@@ -32,6 +33,7 @@ const RATING_META: Record<
 const DEFAULT_EQUIPMENT = BUSINESS.equipment
 
 export default function FieldOpsPage() {
+  const { isStaff } = useRole()
   const [jobs, setJobs] = useState<Job[]>([])
   const [spray, setSpray] = useState<SprayDay[]>([])
   const [loading, setLoading] = useState(true)
@@ -228,6 +230,7 @@ export default function FieldOpsPage() {
                       {[job.city, job.county && `${job.county} Co.`].filter(Boolean).join(', ') || '—'}
                       {job.quote_amount ? ` · $${job.quote_amount.toLocaleString()}` : ''}
                     </div>
+                    {isStaff && (
                     <div className="flex flex-wrap items-center gap-2">
                       <input
                         type="date"
@@ -254,6 +257,7 @@ export default function FieldOpsPage() {
                         {savingId === job.id ? '…' : 'Schedule'}
                       </button>
                     </div>
+                    )}
                   </div>
                 )
               })}

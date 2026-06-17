@@ -9,6 +9,7 @@ import {
 } from '@/lib/supabase'
 import type { DupCluster } from '@/lib/enrichment/dedupe'
 import EfbAutomationPanel from '@/components/intel/EfbAutomationPanel'
+import { useRole } from '@/lib/auth/role'
 
 interface Capabilities {
   aiEnabled: boolean
@@ -61,6 +62,7 @@ const STATUS_META: Record<string, string> = {
 }
 
 export default function AutomationPage() {
+  const { isStaff } = useRole()
   const [leads, setLeads] = useState<Lead[]>([])
   const [runs, setRuns] = useState<EnrichmentRun[]>([])
   const [nextActions, setNextActions] = useState<Lead[]>([])
@@ -271,6 +273,7 @@ export default function AutomationPage() {
             Algorithmic prioritization + AI analysis, momentum &amp; auto-sync
           </p>
         </div>
+        {isStaff && (
         <button
           onClick={runNow}
           disabled={running}
@@ -279,6 +282,7 @@ export default function AutomationPage() {
         >
           {running ? 'Researching…' : '⚡ Run automation now'}
         </button>
+        )}
       </div>
 
       {message && (
@@ -684,13 +688,13 @@ export default function AutomationPage() {
                       </span>
                     ))}
                   </span>
-                  <button
+                  {isStaff && <button
                     onClick={() => mergeCluster(cluster)}
                     disabled={dupBusy !== null}
                     className="tap text-xs border border-slate-200 hover:border-slate-400 text-slate-700 rounded-lg px-3 py-1 font-medium transition-colors disabled:opacity-60"
                   >
                     {dupBusy ? 'Merging…' : 'Merge'}
-                  </button>
+                  </button>}
                 </div>
                 <div className="space-y-1">
                   {cluster.members.map(m => (
@@ -724,6 +728,7 @@ export default function AutomationPage() {
         <p className="text-xs text-slate-400 mb-4">
           Adds normalized crop/fit tags (additive — never overwrites existing data), 20 leads per pass.
         </p>
+        {isStaff && (
         <div className="flex gap-2">
           <button
             onClick={() => runTagging(true)}
@@ -740,6 +745,7 @@ export default function AutomationPage() {
             {tagBusy === 'apply' ? 'Tagging…' : 'Tag next 20'}
           </button>
         </div>
+        )}
 
         {tagResult && (
           <div className="mt-4">

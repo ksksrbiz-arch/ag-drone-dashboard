@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase, type Lead, type LOIStatus } from '@/lib/supabase'
+import { useRole } from '@/lib/auth/role'
 
 const STAGES: { status: LOIStatus; label: string; color: string; dot: string }[] = [
   { status: 'not_contacted',     label: 'Not Contacted',    color: 'border-slate-200 bg-slate-50',   dot: 'bg-slate-400'   },
@@ -120,6 +121,7 @@ function LeadCard({
   onAdvance: (id: string, status: LOIStatus) => void
   isUpdating: boolean
 }) {
+  const { isStaff } = useRole()
   const stageOrder = STAGES.map(s => s.status)
   const currentIdx = stageOrder.indexOf(currentStage)
   const nextStage = stageOrder[currentIdx + 1] as LOIStatus | undefined
@@ -154,7 +156,7 @@ function LeadCard({
         <div className="text-xs text-slate-400 mb-2">👤 {lead.assigned_to}</div>
       )}
 
-      {nextStage && currentStage !== 'declined' && (
+      {isStaff && nextStage && currentStage !== 'declined' && (
         <button
           onClick={() => onAdvance(lead.id, nextStage)}
           disabled={isUpdating}

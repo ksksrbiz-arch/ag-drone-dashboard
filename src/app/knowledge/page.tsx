@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRole } from '@/lib/auth/role'
 import { ASSISTANT_NAME } from '@/lib/business'
 
 interface Doc {
@@ -44,10 +45,10 @@ function fmtBytes(n: number) {
 }
 
 export default function KnowledgePage() {
+  const { isStaff } = useRole()
   const [docs, setDocs] = useState<Doc[]>([])
   const [folders, setFolders] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
-  const [isStaff, setIsStaff] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -73,14 +74,7 @@ export default function KnowledgePage() {
     }
   }, [])
 
-  useEffect(() => {
-    load()
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return
-      const { data: p } = await supabase.from('profiles').select('role').eq('id', data.user.id).single()
-      setIsStaff(p?.role === 'owner' || p?.role === 'partner')
-    })
-  }, [load])
+  useEffect(() => { load() }, [load])
 
   async function save(doc: { title: string; folder: string; content: string; source: 'note' | 'file'; mime?: string; byte_size?: number }) {
     setBusy(true)
