@@ -15,6 +15,7 @@ const navItems = [
   { href: '/pipeline',   label: 'Pipeline',   icon: '🔄' },
   { href: '/customers',  label: 'Customers',  icon: '🤝' },
   { href: '/jobs',       label: 'Jobs',       icon: '✈️' },
+  { href: '/schedule',   label: 'Dispatch',   icon: '🗓️' },
   { href: '/field-ops',  label: 'Field Ops',  icon: '🌤️' },
   { href: '/fields',     label: 'Fields',     icon: '🗺️' },
   { href: '/finance',    label: 'Finance',    icon: '💵' },

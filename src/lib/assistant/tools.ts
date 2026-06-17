@@ -61,6 +61,8 @@ const PAGES: Record<string, string> = {
   pipeline: '/pipeline',
   customers: '/customers',
   jobs: '/jobs',
+  schedule: '/schedule', // dispatch board
+  dispatch: '/schedule',
   field_ops: '/field-ops',
   fields: '/fields',
   finance: '/finance',
@@ -317,7 +319,7 @@ export const TOOLS = [
   {
     name: 'navigate',
     description:
-      'Navigate the dashboard UI to a page, optionally pre-filtering it. ALWAYS call this whenever the user asks to open / go to / show / take me to / pull up a section or a filtered view — never reply that a page is unavailable. Page mapping: overview, leads, discover, pipeline, customers, jobs, field_ops, fields (field boundary map), finance, intel (EFB satellite risk map / risk map / Intelligence Hub), alerts, automation. For requests like "show me Marion P1 leads" or "hazelnut treat-now leads", navigate to "leads" and set the matching filters. IMPORTANT: place names like Marion, Clackamas, Yamhill, Polk, Linn, Washington, Benton are COUNTIES — put them in the county filter, not city. Use city only for towns (Canby, Woodburn, Aurora, Dallas, etc.).',
+      'Navigate the dashboard UI to a page, optionally pre-filtering it. ALWAYS call this whenever the user asks to open / go to / show / take me to / pull up a section or a filtered view — never reply that a page is unavailable. Page mapping: overview, leads, discover, pipeline, customers, jobs, schedule (dispatch board / scheduling / calendar), field_ops, fields (field boundary map), finance, intel (EFB satellite risk map / risk map / Intelligence Hub), alerts, automation. For requests like "show me Marion P1 leads" or "hazelnut treat-now leads", navigate to "leads" and set the matching filters. IMPORTANT: place names like Marion, Clackamas, Yamhill, Polk, Linn, Washington, Benton are COUNTIES — put them in the county filter, not city. Use city only for towns (Canby, Woodburn, Aurora, Dallas, etc.).',
     input_schema: {
       type: 'object',
       properties: {
