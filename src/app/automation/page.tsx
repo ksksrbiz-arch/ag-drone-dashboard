@@ -20,6 +20,8 @@ interface Capabilities {
   batchSize: number
   concurrency: number
   retries?: number
+  aiProvider?: string | null
+  aiModel?: string | null
 }
 
 const TREND_META: Record<string, { icon: string; cls: string }> = {
@@ -928,7 +930,9 @@ function EngineHealth({ caps }: { caps: Capabilities | null }) {
     {
       label: 'AI Analysis',
       ok: caps.aiEnabled,
-      detail: caps.aiEnabled ? caps.modelVersion : 'set a Groq / OpenRouter / Anthropic key',
+      detail: caps.aiEnabled
+        ? (caps.aiModel ? `${caps.aiProvider} · ${caps.aiModel}` : caps.modelVersion)
+        : 'set a Groq / OpenRouter / Anthropic key',
     },
     {
       label: 'Database Writes',

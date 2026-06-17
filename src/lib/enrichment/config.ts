@@ -1,4 +1,5 @@
 import { writeMode } from '@/lib/supabaseAdmin'
+import { activeProvider } from '@/lib/ai/llm'
 import type { EngineCapabilities } from './types'
 
 // Model + engine tuning, all overridable via environment variables so the
@@ -38,6 +39,7 @@ export const REQUIRE_SECRET_FOR_MANUAL =
 export { BUSINESS_CONTEXT as COMPANY_CONTEXT } from '@/lib/business'
 
 export function capabilities(): EngineCapabilities {
+  const ai = activeProvider()
   return {
     aiEnabled: AI_ENABLED,
     apolloEnabled: APOLLO_ENABLED,
@@ -47,6 +49,8 @@ export function capabilities(): EngineCapabilities {
     batchSize: BATCH_SIZE,
     concurrency: CONCURRENCY,
     retries: RETRIES,
+    aiProvider: ai?.provider ?? null,
+    aiModel: ai?.model ?? null,
   }
 }
 
