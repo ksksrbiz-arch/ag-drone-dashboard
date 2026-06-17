@@ -72,6 +72,13 @@ export function aiConfigured(): boolean {
   return resolveProvider() !== null
 }
 
+/** The provider + model that cheap-inference (incl. enrichment analysis) will
+ *  use right now, for display on the dashboard. Null when nothing is configured. */
+export function activeProvider(): { provider: string; model: string } | null {
+  const p = resolveProvider()
+  return p ? { provider: p.label, model: p.model } : null
+}
+
 /** Text + metadata (token usage, provider, model) from one completion. */
 export interface CompletionResult {
   text: string

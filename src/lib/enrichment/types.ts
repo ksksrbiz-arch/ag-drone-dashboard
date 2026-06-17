@@ -42,6 +42,9 @@ export interface EngineCapabilities {
   concurrency: number
   /** v3: per-lead retry attempts on transient research/write failures. */
   retries: number
+  /** Active AI provider + model used for analysis (null if none configured). */
+  aiProvider?: string | null
+  aiModel?: string | null
 }
 
 /** Per-lead result of one enrichment cycle. */
