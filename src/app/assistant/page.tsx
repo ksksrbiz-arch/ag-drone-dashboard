@@ -37,7 +37,36 @@ export default function AssistantPage() {
   const [attachment, setAttachment] = useState<ChatAttachment | null>(null)
   const [listening, setListening] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [suggestions, setSuggestions] = useState<string[]>(SUGGESTIONS)
+  const [briefLine, setBriefLine] = useState<string | null>(null)
   useEffect(() => setMounted(true), [])
+
+  // Make the opening screen feel aware: pull today's counts and turn whatever
+  // is pressing into a one-line summary + tailored starter prompts.
+  useEffect(() => {
+    fetch('/api/digest', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(j => {
+        if (!j?.ok) return
+        const c = j.counts ?? {}
+        const dyn: string[] = []
+        if (c.treat_now) dyn.push('What needs treating right now?')
+        if (c.followups_due) dyn.push('Which follow-ups are overdue?')
+        if (c.at_risk) dyn.push('Show me the leads that are cooling off')
+        if (c.new_p1) dyn.push('What are the new P1 leads?')
+        if (c.needs_enrichment) dyn.push('What still needs research?')
+        const merged = [...dyn, ...SUGGESTIONS].filter((v, i, a) => a.indexOf(v) === i).slice(0, 5)
+        setSuggestions(merged)
+
+        const parts: string[] = []
+        if (c.treat_now) parts.push(`${c.treat_now} treat-now`)
+        if (c.new_p1) parts.push(`${c.new_p1} new P1`)
+        if (c.followups_due) parts.push(`${c.followups_due} follow-up${c.followups_due === 1 ? '' : 's'} due`)
+        if (c.at_risk) parts.push(`${c.at_risk} at risk`)
+        setBriefLine(parts.length ? `Here's what's pressing: ${parts.join(' · ')}.` : null)
+      })
+      .catch(() => {})
+  }, [])
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const recogRef = useRef<any>(null)
@@ -208,9 +237,16 @@ export default function AssistantPage() {
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center gap-4">
             <div className="text-4xl">🤖</div>
-            <p className="text-sm text-slate-400 max-w-sm">I can answer from live data, navigate the app, take actions, and read a file you attach. Try one:</p>
+            <div className="max-w-sm">
+              <p className="text-sm font-medium text-slate-700">Hi — I&apos;m {ASSISTANT_NAME}.</p>
+              {briefLine ? (
+                <p className="text-sm text-amber-700 mt-1">{briefLine}</p>
+              ) : (
+                <p className="text-sm text-slate-400 mt-1">Ask from live data, navigate, take actions, or attach a file.</p>
+              )}
+            </div>
             <div className="flex flex-wrap justify-center gap-2 max-w-md">
-              {SUGGESTIONS.map(s => (
+              {suggestions.map(s => (
                 <button key={s} onClick={() => send(s)} className="tap text-xs text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-slate-600 transition-colors">{s}</button>
               ))}
             </div>
