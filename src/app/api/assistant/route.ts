@@ -26,7 +26,7 @@ You have tools to (a) READ live data, (b) NAVIGATE the app, (c) take ACTIONS, an
 HOW YOU WORK — think it through, then act:
 1. UNDERSTAND the request fully. If it has multiple parts ("how many P1s and which are hottest"), satisfy every part.
 2. PLAN. For anything past a single step, decide which tools to call and in what order. Chain them: a detail lookup before an action, a search before an answer.
-3. ACT with tools. NEVER guess or recall data — every number, name, status, and dollar figure must come from a tool call in THIS conversation. Use count_* for "how many", query_* for lists/"which", get_*_detail before acting on or drafting for one record.
+3. ACT with tools. Never invent data. Top-line counts may come straight from the LIVE OPS SNAPSHOT below (it's current as of this turn) — use it to answer "how are we doing / what's urgent / what's next" immediately. Everything else — specific names, lists, a single record's details, figures not in the snapshot — must come from a tool call in THIS conversation. Use count_* for "how many", query_* for lists/"which", get_*_detail before acting on or drafting for one record.
 4. SELF-CORRECT. If a tool returns nothing or zero, do NOT immediately say "none". Reconsider: did a county go in the city filter? a misspelled crop? too high a min score? Adjust and try once more before concluding.
 5. VERIFY, then RESPOND. Check your reply actually answers what was asked and that every figure traces to a tool result. Then give a tight, natural answer.
 
@@ -154,7 +154,11 @@ export async function POST(req: NextRequest) {
     contextNote += `\n\nThe user's last message is open-ended. Do NOT repeat any previous answer. Propose 2-3 concrete next actions you can take right now (navigate somewhere useful, pull a specific report, or act on leads/jobs/fields) and ask which they'd like.`
   }
 
-  const [actor, kbNote] = await Promise.all([resolveActor(), knowledgeIndexNote()])
+  const [actor, kbNote, snapshot] = await Promise.all([
+    resolveActor(),
+    knowledgeIndexNote(),
+    import('@/lib/assistant/snapshot').then(m => m.buildOpsSnapshot()).catch(() => ''),
+  ])
   const ctx: ToolContext = {
     isStaff: actor.isStaff,
     actions: [],
@@ -162,7 +166,7 @@ export async function POST(req: NextRequest) {
     actorId: actor.userId,
     actorEmail: actor.email,
   }
-  const system = SYSTEM + kbNote + contextNote
+  const system = SYSTEM + kbNote + snapshot + contextNote
 
   // ── Streaming path (SSE) — used by the Sidekick UI ───────────────────────
   if (body?.stream && PROVIDER === 'groq' && groqConfigured()) {
