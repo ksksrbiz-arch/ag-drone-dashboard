@@ -29,6 +29,23 @@ function dayKey(d: string | null): string {
   return d ? d.slice(0, 10) : 'unscheduled'
 }
 
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** Monday (local) of the week containing `d`. */
+function mondayOf(d: Date): string {
+  const x = new Date(d); x.setHours(0, 0, 0, 0)
+  const dow = (x.getDay() + 6) % 7 // 0 = Monday
+  x.setDate(x.getDate() - dow)
+  return isoDate(x)
+}
+
+function addDays(iso: string, n: number): string {
+  const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n)
+  return isoDate(d)
+}
+
 function dayLabel(key: string): string {
   if (key === 'unscheduled') return 'Unscheduled'
   const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -44,6 +61,8 @@ export default function SchedulePage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [view, setView] = useState<'agenda' | 'week'>('agenda')
+  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()))
 
   useEffect(() => {
     supabase
@@ -79,12 +98,25 @@ export default function SchedulePage() {
 
   return (
     <div className="p-4 sm:p-6 md:p-8 max-w-5xl mx-auto animate-fade">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Dispatch</h1>
-        <p className="text-slate-500 text-sm mt-0.5">
-          {jobs.length} active job{jobs.length === 1 ? '' : 's'}
-          {unscheduledCount > 0 && ` · ${unscheduledCount} unscheduled`}
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Dispatch</h1>
+          <p className="text-slate-500 text-sm mt-0.5">
+            {jobs.length} active job{jobs.length === 1 ? '' : 's'}
+            {unscheduledCount > 0 && ` · ${unscheduledCount} unscheduled`}
+          </p>
+        </div>
+        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-medium">
+          {(['agenda', 'week'] as const).map(v => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`tap px-3 py-1.5 rounded-md capitalize transition-colors ${view === v ? 'bg-brand-500 text-white' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
@@ -93,6 +125,41 @@ export default function SchedulePage() {
         <div className="bg-white rounded-xl border border-slate-200 shadow-card p-8 text-center">
           <p className="text-sm text-slate-500">No active jobs to dispatch.</p>
           <p className="text-xs text-slate-400 mt-1">Quoted, scheduled, and in-progress jobs show up here.</p>
+        </div>
+      ) : view === 'week' ? (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={() => setWeekStart(addDays(weekStart, -7))} className="tap text-sm text-slate-500 hover:text-slate-700">← Prev</button>
+            <div className="text-sm font-semibold text-slate-700">Week of {new Date(weekStart + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setWeekStart(mondayOf(new Date()))} className="tap text-xs text-brand-600 hover:text-brand-700">This week</button>
+              <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="tap text-sm text-slate-500 hover:text-slate-700">Next →</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2">
+            {Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).map(date => {
+              const dayJobs = jobs.filter(j => j.scheduled_date?.slice(0, 10) === date)
+              const d = new Date(date + 'T00:00:00')
+              const isToday = date === isoDate(new Date())
+              return (
+                <div key={date} className={`rounded-lg border p-2 min-h-[90px] ${isToday ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200 bg-white'}`}>
+                  <div className="text-[11px] font-medium text-slate-500 mb-1.5">{d.toLocaleDateString(undefined, { weekday: 'short' })} {d.getDate()}</div>
+                  <div className="space-y-1">
+                    {dayJobs.map(job => (
+                      <div key={job.id} className="rounded-md border border-slate-100 bg-white px-1.5 py-1">
+                        <p className="text-[11px] font-medium text-slate-700 truncate">{job.job_title ?? 'Job'}</p>
+                        <span className={`inline-block mt-0.5 text-[10px] px-1.5 rounded-full ${STATUS_PILL[job.status] ?? ''}`}>{job.status.replace('_', ' ')}</span>
+                      </div>
+                    ))}
+                    {dayJobs.length === 0 && <p className="text-[11px] text-slate-300">—</p>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {unscheduledCount > 0 && (
+            <p className="text-xs text-amber-700 mt-3">{unscheduledCount} unscheduled job{unscheduledCount === 1 ? '' : 's'} — switch to Agenda to assign dates.</p>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
