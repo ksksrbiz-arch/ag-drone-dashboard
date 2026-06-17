@@ -29,6 +29,9 @@ export const BUSINESS = {
   city: str(process.env.NEXT_PUBLIC_BUSINESS_CITY, 'Canby, Oregon'),
   region: str(process.env.NEXT_PUBLIC_BUSINESS_REGION, "Oregon's Willamette Valley"),
   equipment: str(process.env.NEXT_PUBLIC_BUSINESS_EQUIPMENT, 'DJI Agras T50'),
+  // The kind of operation, used in AI prompts ("a ___ business") and copy.
+  // Override for non-ag operators, e.g. "drone mapping & inspection".
+  industry: str(process.env.NEXT_PUBLIC_BUSINESS_INDUSTRY, 'drone services'),
   serviceRadiusMi: num(process.env.NEXT_PUBLIC_BUSINESS_RADIUS_MI, 60),
   hqLat: num(process.env.NEXT_PUBLIC_BUSINESS_LAT, 45.2662),
   hqLon: num(process.env.NEXT_PUBLIC_BUSINESS_LON, -122.6926),
@@ -49,6 +52,16 @@ export const PRODUCT_NAME = str(process.env.NEXT_PUBLIC_PRODUCT_NAME, 'Sortie')
 export const PRODUCT_TAGLINE = str(process.env.NEXT_PUBLIC_PRODUCT_TAGLINE, 'Drone Operations Platform')
 export const ASSISTANT_NAME = str(process.env.NEXT_PUBLIC_ASSISTANT_NAME, 'Ace')
 
+// Label for the precision-intelligence module (the satellite/risk hub). Ag
+// tenants may set "EFB Intel"; the de-ag default is the neutral "Intel".
+//   NEXT_PUBLIC_INTEL_LABEL   nav label, e.g. "Intel" | "EFB Intel"
+//   NEXT_PUBLIC_INTEL_TITLE   page heading, e.g. "Intelligence Hub"
+export const INTEL_LABEL = str(process.env.NEXT_PUBLIC_INTEL_LABEL, 'Intel')
+export const INTEL_TITLE = str(process.env.NEXT_PUBLIC_INTEL_TITLE, 'Intelligence Hub')
+
+/** Short phrase for AI prompt preambles: "a <industry> business". */
+export const INDUSTRY_DESC = `a ${BUSINESS.industry} business`
+
 /** Display name with safe fallback for branding. */
 export const BRAND_NAME = BUSINESS.name || 'Drone Ops'
 
@@ -57,9 +70,16 @@ export const OUTREACH_SIGNOFF = [BUSINESS.signer || '[Your name]', BUSINESS.name
   .filter(Boolean)
   .join(' — ')
 
-/** Reusable AI-prompt context. Omits location claims when no city is set. */
-export const BUSINESS_CONTEXT = `${BUSINESS.name || 'This'} is a drone-services company${
-  BUSINESS.city ? ` based in ${BUSINESS.city}` : ''
-} (${BUSINESS.region}). Core service: agricultural spraying and crop scouting with ${BUSINESS.equipment} spray drones — especially Eastern Filbert Blight (EFB) treatment and scouting for hazelnut orchards, plus fungicide/pesticide application for orchards, vineyards, berries, nurseries, grass seed and row crops. Secondary verticals: aerial imaging for insurance, real estate, and construction. Ideal customers are growers${
+// The services description that grounds AI prompts. Defaults to the current ag
+// operation, but a non-ag licensee can fully re-aim the assistant/outreach by
+// setting NEXT_PUBLIC_BUSINESS_SERVICES — no code change.
+const DEFAULT_SERVICES = `Core service: agricultural spraying and crop scouting with ${BUSINESS.equipment} spray drones — especially Eastern Filbert Blight (EFB) treatment and scouting for hazelnut orchards, plus fungicide/pesticide application for orchards, vineyards, berries, nurseries, grass seed and row crops. Secondary verticals: aerial imaging for insurance, real estate, and construction. Ideal customers are growers${
   CITY_SHORT ? ` within roughly ${BUSINESS.serviceRadiusMi} miles of ${CITY_SHORT}` : ''
 } with treatable acreage and a recurring spray or scouting need.`
+
+export const BUSINESS_SERVICES = str(process.env.NEXT_PUBLIC_BUSINESS_SERVICES, DEFAULT_SERVICES)
+
+/** Reusable AI-prompt context. Omits location claims when no city is set. */
+export const BUSINESS_CONTEXT = `${BUSINESS.name || 'This'} is ${INDUSTRY_DESC}${
+  BUSINESS.city ? ` based in ${BUSINESS.city}` : ''
+}${BUSINESS.region ? ` (${BUSINESS.region})` : ''}. ${BUSINESS_SERVICES}`

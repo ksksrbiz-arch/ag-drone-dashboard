@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { BUSINESS, BRAND_NAME, PRODUCT_NAME, ASSISTANT_NAME } from '@/lib/business'
+import { BUSINESS, BRAND_NAME, PRODUCT_NAME, ASSISTANT_NAME, INTEL_LABEL } from '@/lib/business'
 import { supabase } from '@/lib/supabase'
 
 const navItems = [
@@ -18,7 +18,7 @@ const navItems = [
   { href: '/field-ops',  label: 'Field Ops',  icon: '🌤️' },
   { href: '/fields',     label: 'Fields',     icon: '🗺️' },
   { href: '/finance',    label: 'Finance',    icon: '💵' },
-  { href: '/intel',      label: 'EFB Intel',  icon: '🧠' },
+  { href: '/intel',      label: INTEL_LABEL,  icon: '🧠' },
   { href: '/knowledge',  label: 'Knowledge',  icon: '📚' },
   { href: '/alerts',     label: 'Alerts',     icon: '🔔' },
   { href: '/automation', label: 'Automation', icon: '🤖' },
