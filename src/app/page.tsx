@@ -24,6 +24,11 @@ const VERTICAL_LABELS: Record<string, string> = {
   insurance: '🏠 Insurance',
   real_estate: '🏡 Real Estate',
   construction: '🏗️ Construction',
+  energy: '☀️ Solar & Infra',
+  mapping: '🗺️ Mapping',
+  inspection: '🔎 Inspection',
+  survey: '📐 Survey',
+  delivery: '📦 Delivery',
 }
 
 const ACTION_COLORS: Record<string, string> = {

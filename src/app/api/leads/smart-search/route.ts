@@ -13,7 +13,7 @@ Schema:
   "county": string,
   "city": string,
   "crop": string,            // matches primary_crop
-  "vertical": "ag_spray" | "insurance" | "real_estate" | "construction",
+  "vertical": "ag_spray" | "insurance" | "real_estate" | "construction" | "energy" | "mapping" | "inspection" | "survey" | "delivery",
   "priority_tier": "P1" | "P2" | "P3" | "P4",
   "loi_status": "not_contacted" | "contacted" | "meeting_scheduled" | "loi_sent" | "loi_signed" | "declined",
   "action_recommendation": "TREAT_NOW" | "SCOUT_NOW" | "CONTACT_NOW" | "MONITOR",

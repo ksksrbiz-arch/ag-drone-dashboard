@@ -18,6 +18,11 @@ const VERTICAL_ICONS: Record<string, string> = {
   insurance:   '🏠',
   real_estate: '🏡',
   construction:'🏗️',
+  energy:      '☀️',
+  mapping:     '🗺️',
+  inspection:  '🔎',
+  survey:      '📐',
+  delivery:    '📦',
 }
 
 export default function PipelinePage() {
