@@ -23,12 +23,35 @@ body {
 *::-webkit-scrollbar-thumb:hover { background: #94a3b8; background-clip: content-box; }
 *::-webkit-scrollbar-track { background: transparent; }
 
+@layer base {
+  /* Smooth, consistent interactions everywhere a control doesn't already opt
+     into its own Tailwind transition (base layer = lowest precedence, so any
+     explicit `transition-*` utility still wins). */
+  button, a, select, input, textarea, [role='button'] {
+    transition: color .15s ease, background-color .15s ease, border-color .15s ease,
+                box-shadow .15s ease, transform .1s ease, opacity .15s ease;
+  }
+  /* One consistent, accessible keyboard-focus ring across the app. */
+  :focus-visible { outline: 2px solid rgba(34, 197, 94, 0.6); outline-offset: 2px; border-radius: 6px; }
+  /* Honor users who prefer reduced motion. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
 @layer utilities {
   .text-balance { text-wrap: balance; }
 
-  /* Touch targets — ensure interactive controls meet the ~44px tap minimum. */
+  /* Touch targets — ensure interactive controls meet the ~44px tap minimum, with
+     a subtle press feedback so taps feel responsive. */
   .tap { min-height: 44px; }
   .tap-sq { min-height: 44px; min-width: 44px; }
+  .tap:active:not(:disabled), .tap-sq:active:not(:disabled) { transform: scale(0.97); }
 
   .animate-fade { animation: fadeUp 0.4s ease-out both; }
   @keyframes fadeUp {
