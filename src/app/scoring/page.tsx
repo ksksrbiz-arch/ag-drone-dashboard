@@ -1,6 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase, type Lead, type PriorityTier } from '@/lib/supabase'
+import { computePriority, type ScoringConfig } from '@/lib/enrichment/priority'
 
 // Scoring-config editor — tune the priority engine's per-factor weights and
 // P1–P4 thresholds without code. Empty/Reset reverts to the built-in defaults;
@@ -8,6 +10,13 @@ import { useCallback, useEffect, useState } from 'react'
 
 type FactorDef = { key: string; label: string; agWeight: number; nonAgWeight: number }
 type Thresholds = { p1: number; p2: number; p3: number }
+
+const TIER_BAR: Record<PriorityTier, string> = {
+  P1: 'bg-red-500',
+  P2: 'bg-orange-400',
+  P3: 'bg-yellow-400',
+  P4: 'bg-slate-400',
+}
 
 export default function ScoringSettingsPage() {
   const [factors, setFactors] = useState<FactorDef[]>([])
@@ -18,6 +27,10 @@ export default function ScoringSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  // Live-preview sample: real leads scored in-browser under the edited config.
+  const [sample, setSample] = useState<Lead[]>([])
+  // The config currently in effect (saved) — the baseline the preview compares against.
+  const [savedConfig, setSavedConfig] = useState<ScoringConfig>({})
 
   const hydrate = useCallback(
     (config: any, defs: { factors: FactorDef[]; thresholds: Thresholds }) => {
@@ -42,6 +55,7 @@ export default function ScoringSettingsPage() {
       const json = await res.json()
       if (json.ok) {
         setDefaults(json.defaults)
+        setSavedConfig(json.config ?? {})
         hydrate(json.config, json.defaults)
       }
     } catch {
@@ -52,6 +66,18 @@ export default function ScoringSettingsPage() {
   useEffect(() => {
     load().then(() => setLoading(false))
   }, [load])
+
+  // Pull a sample of real leads (only the fields the scorer reads) for the
+  // in-browser live preview.
+  useEffect(() => {
+    supabase
+      .from('leads')
+      .select(
+        'id,vertical,distance_to_canby_mi,est_acreage,primary_crop,composite_efb_risk,action_recommendation,spray_window_score,risk_trend,est_annual_revenue,loi_status,phone,email,loi_signed_at,loi_sent_at,created_at,lead_score'
+      )
+      .limit(500)
+      .then(({ data }) => setSample((data ?? []) as Lead[]))
+  }, [])
 
   function buildConfig() {
     const num = (s: string, fallback: number) => {
@@ -72,6 +98,32 @@ export default function ScoringSettingsPage() {
     return { agWeights, nonAgWeights, thresholds }
   }
 
+  // Baseline tiers under the config currently in effect — recomputed when the
+  // sample or the saved config changes.
+  const baseTiers = useMemo(
+    () => sample.map(l => computePriority(l, {}, savedConfig).tier),
+    [sample, savedConfig]
+  )
+
+  // Re-tier the sample under the currently-edited config (relationship signal
+  // left neutral — this previews the weight/threshold effect, not job history).
+  const preview = useMemo(() => {
+    if (!sample.length) return null
+    const cfg = buildConfig()
+    const base: Record<PriorityTier, number> = { P1: 0, P2: 0, P3: 0, P4: 0 }
+    const next: Record<PriorityTier, number> = { P1: 0, P2: 0, P3: 0, P4: 0 }
+    let changed = 0
+    sample.forEach((l, i) => {
+      const b = baseTiers[i]
+      base[b]++
+      const n = computePriority(l, {}, cfg).tier
+      next[n]++
+      if (n !== b) changed++
+    })
+    return { base, next, changed, n: sample.length }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sample, baseTiers, agW, nonAgW, th, factors, defaults])
+
   async function save() {
     const cfg = buildConfig()
     const { p1, p2, p3 } = cfg.thresholds
@@ -88,6 +140,7 @@ export default function ScoringSettingsPage() {
         body: JSON.stringify({ config: cfg }),
       })
       const json = await res.json()
+      if (res.ok && json.ok) setSavedConfig(cfg)
       setMessage(res.ok && json.ok ? 'Saved — applies on the next scoring run.' : `Save failed: ${json.error ?? res.statusText}`)
     } catch (err: any) {
       setMessage(`Save failed: ${String(err?.message ?? err)}`)
@@ -107,6 +160,7 @@ export default function ScoringSettingsPage() {
       })
       const json = await res.json()
       if (res.ok && json.ok) {
+        setSavedConfig({})
         if (defaults) hydrate({}, defaults)
         setMessage('Reset to defaults.')
       } else {
@@ -137,6 +191,42 @@ export default function ScoringSettingsPage() {
 
       {message && (
         <div className="text-sm rounded-lg border border-brand-200 bg-brand-50 text-brand-800 px-4 py-2.5">{message}</div>
+      )}
+
+      {/* Live preview */}
+      {preview && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+            <h2 className="text-sm font-semibold text-slate-700">Live Preview</h2>
+            <span className="text-xs text-slate-400">
+              <span className="font-semibold text-slate-700">{preview.changed}</span> of {preview.n} sample leads change tier
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mb-4">
+            How this sample re-tiers under the edited config vs. defaults — updates as you type, not saved. (Approximate: relationship signal is neutral here.)
+          </p>
+          <div className="space-y-2.5">
+            {(['default', 'edited'] as const).map(which => {
+              const dist = which === 'default' ? preview.base : preview.next
+              const total = preview.n || 1
+              return (
+                <div key={which}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-slate-500">{which === 'default' ? 'In effect' : 'Edited'}</span>
+                    <span className="text-slate-400 tabular-nums">
+                      {(['P1', 'P2', 'P3', 'P4'] as PriorityTier[]).map(t => `${t} ${dist[t]}`).join(' · ')}
+                    </span>
+                  </div>
+                  <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100">
+                    {(['P1', 'P2', 'P3', 'P4'] as PriorityTier[]).map(t => (
+                      <div key={t} className={TIER_BAR[t]} style={{ width: `${(dist[t] / total) * 100}%` }} />
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       )}
 
       {/* Tier thresholds */}
