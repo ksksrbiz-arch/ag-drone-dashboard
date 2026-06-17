@@ -83,8 +83,9 @@ that history durable and turns it into action:
 The **Analytics** tab (`/analytics`, served by `GET /api/analytics`) aggregates
 the data the system now captures into one operator view: **engine throughput &
 AI-cost trends** per run (from `enrichment_runs`), the **pipeline funnel** with
-sign-rate, **priority distribution**, **top crops** by volume + average priority,
-and **jobs/revenue**. Read-only — no migration required.
+sign-rate, an **Avg Time in Stage** stall detector (days leads have sat in each
+active stage, from `stage_changed_at`), **priority distribution**, **top crops**
+by volume + average priority, and **jobs/revenue**. Read-only — no migration required.
 
 It also includes a **Territory Map** (`src/components/intel/LeadMap.tsx`, a
 generalized Leaflet map) that plots geocoded leads colored by **priority tier /
