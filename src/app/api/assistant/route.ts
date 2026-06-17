@@ -23,6 +23,8 @@ const SYSTEM = `You are ${ASSISTANT_NAME}, the AI assistant built into ${PRODUCT
 
 You have tools to (a) READ live data, (b) NAVIGATE the app, (c) take ACTIONS, and (d) read & write a knowledge base. You are a capable agent: you can call several tools in sequence, feeding each result into the next step, before you answer.
 
+BE DECISIVE — your #1 rule. When the user wants names, a list, "which", details, or says go-ahead ("yes", "do it", "look into those", "the X ones first"), CALL THE TOOLS AND ANSWER IN THE SAME TURN. Never ask a question a tool could answer. Never say "I'd need to dig a bit deeper", "would you like me to…", or "I can look into…" when you can just look now — do it and show the result. Never describe what you *could* do; do it. Lead with real specifics — actual farm/owner names, scores, $, counts — never vague filler like "a few large farms" or "some leads in the area". A single short clarifying question is allowed ONLY when the request is genuinely ambiguous and there's no reasonable default; otherwise, act.
+
 HOW YOU WORK — think it through, then act:
 1. UNDERSTAND the request fully. If it has multiple parts ("how many P1s and which are hottest"), satisfy every part.
 2. PLAN. For anything past a single step, decide which tools to call and in what order. Chain them: a detail lookup before an action, a search before an answer.
@@ -39,7 +41,7 @@ TOOL DISCIPLINE:
 VOICE — talk like a sharp, friendly teammate, not a system:
 - Be warm and natural. Use contractions, vary your phrasing, and react like a person ("Nice — three new P1s came in this week.", "Hm, nothing in Marion yet."). Never robotic, never the same canned opener every time.
 - Greetings, thanks, and small talk get a short, human reply — no tool calls, no menu of options dumped on them.
-- Lead with the answer in plain language, then the useful detail. Concise, not curt: a sentence of context or a "want me to…?" is welcome when it actually helps.
+- Lead with the answer in plain language, then the useful detail. Concise, not curt — but don't tack a "want me to…?" onto every reply; only offer a next step when it genuinely adds something.
 - Plain text only (no markdown tables or headers). Money as $X,XXX. Speak naturally and NEVER mention tools, functions, or page-slug names ("Opening the risk map…", not "calling navigate").
 - Don't ask permission for routine actions they clearly requested — do them and confirm in a natural sentence. Ask a short clarifying question only when something is genuinely ambiguous.
 - For vague/open-ended messages ("do more", "what else", "next", "ok"), don't repeat your last answer — suggest 2-3 concrete next moves grounded in the live data and ask which they want.
@@ -47,6 +49,7 @@ VOICE — talk like a sharp, friendly teammate, not a system:
 
 WORKED EXAMPLES (the kind of tool chaining expected — do this silently, the user only sees your final words):
 - "Which grass-seed leads in Marion are hottest?" → query_leads(county:"Marion", crop:"grass", min_priority_score: a high value) → name the top few with their scores.
+- You just offered to detail the P2 leads and they reply "yes, look into those" / "highest-paying crops first" → DON'T ask which area. Immediately query_leads(priority_tier:"P2"), rank by crop value, and name the top few: "Top P2s by crop value: Henderson Farms (hazelnuts, Marion, 71), Polk Seed Co (grass seed, Polk, 68)…". Specifics, not "a few large farms".
 - "How many P1s still need a first call?" → count_leads(priority_tier:"P1", loi_status:"not_contacted") → state the number.
 - "Draft an email to Smith Farms and mark them contacted." → get_lead_detail(search:"Smith Farms") → draft_outreach(channel:"email") → update_lead_stage(loi_status:"contacted") → show the draft and confirm the stage change.
 - "What do we charge per acre?" → search_knowledge("per-acre rate pricing") → answer and name the doc; if empty, say it isn't in the knowledge base yet.
@@ -145,13 +148,21 @@ export async function POST(req: NextRequest) {
     contextNote += `\n\nATTACHED FILE — the user attached "${name}" to this message. Use it as the primary context for their request; quote/summarize from it as needed:\n"""\n${text}\n"""`
   }
 
-  // Vague / open-ended follow-up ("lets do more", "what else", "next") — steer
-  // the model to propose concrete next actions instead of echoing its last reply.
+  // Steer behavior based on the user's latest short reply.
   const lastUser = [...incoming].reverse().find((m: any) => m?.role !== 'assistant')
-  const lastText = String(lastUser?.content ?? '').trim().toLowerCase()
-  const VAGUE = /^(let'?s?\s+do\s+more|do\s+more|more|what'?s?\s+else|anything\s+else|what'?s?\s+next|next|continue|keep\s+going|go\s+on|ok(ay)?|sure|yep|yes|👍)\b/
-  if (lastText && lastText.length <= 28 && VAGUE.test(lastText)) {
-    contextNote += `\n\nThe user's last message is open-ended. Do NOT repeat any previous answer. Propose 2-3 concrete next actions you can take right now (navigate somewhere useful, pull a specific report, or act on leads/jobs/fields) and ask which they'd like.`
+  const lastText = String(lastUser?.content ?? '').trim().toLowerCase().replace(/[.!?\s]+$/, '')
+
+  // PURE filler ONLY ("more", "what else", "next", a bare "ok") → propose options.
+  // Must match the WHOLE message, so "yes look into those" is NOT caught here.
+  const PURE_VAGUE = /^(let'?s do more|do more|more|what'?s? else|anything else|what'?s? next|next|continue|keep going|go on|ok|okay|👍)$/
+  // Affirmation / go-ahead, possibly followed by a directive ("yes look into
+  // those", "do it", "go ahead", "please do", "sure that one") → EXECUTE now.
+  const AFFIRM = /^(yes|yep|yeah|yup|sure|ok|okay|please|go ahead|do it|do that|sounds good|let'?s do it|absolutely|perfect)\b/
+
+  if (lastText && PURE_VAGUE.test(lastText)) {
+    contextNote += `\n\nThe user's last message is open-ended. Do NOT repeat any previous answer. Propose 2-3 concrete next actions you can take right now and ask which they'd like.`
+  } else if (lastText && AFFIRM.test(lastText)) {
+    contextNote += `\n\nThe user is telling you to GO AHEAD. Immediately DO what was just proposed: call the needed tools and return the concrete results in THIS reply (real names, scores, numbers). Do NOT ask another question or describe what you "would" do — just do it and report what you found.`
   }
 
   const [actor, kbNote, snapshot] = await Promise.all([
