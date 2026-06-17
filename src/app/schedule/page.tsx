@@ -9,11 +9,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase, type Job, type JobStatus } from '@/lib/supabase'
 import { useRole } from '@/lib/auth/role'
 import { BUSINESS } from '@/lib/business'
+import { fetchSprayWindows, type SprayDay, type SprayRating } from '@/lib/weather'
 
 // Non-terminal statuses belong on the board; completed/invoiced/paid/cancelled
 // drop off it.
 const ACTIVE: JobStatus[] = ['quoted', 'scheduled', 'in_progress']
 const BOARD_STATUSES: JobStatus[] = ['quoted', 'scheduled', 'in_progress', 'completed', 'cancelled']
+
+// Flyability badge styling per weather rating (vertical-neutral: wind/precip
+// suitability applies to any drone work, not just spraying).
+const FLY_META: Record<SprayRating, { dot: string; label: string; cls: string }> = {
+  GO: { dot: '🟢', label: 'Good to fly', cls: 'text-green-700' },
+  CAUTION: { dot: '🟡', label: 'Marginal', cls: 'text-amber-700' },
+  NO_GO: { dot: '🔴', label: 'No-fly', cls: 'text-red-600' },
+}
 
 const STATUS_PILL: Record<string, string> = {
   quoted: 'bg-slate-100 text-slate-600',
@@ -63,6 +72,7 @@ export default function SchedulePage() {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [view, setView] = useState<'agenda' | 'week'>('agenda')
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()))
+  const [weather, setWeather] = useState<Record<string, SprayDay>>({})
 
   useEffect(() => {
     supabase
@@ -71,6 +81,13 @@ export default function SchedulePage() {
       .in('status', ACTIVE)
       .order('scheduled_date', { ascending: true, nullsFirst: false })
       .then(({ data }) => { setJobs((data ?? []) as Job[]); setLoading(false) })
+  }, [])
+
+  // Forecast-window flyability (wind/precip) for "best day to fly" hints.
+  useEffect(() => {
+    fetchSprayWindows(BUSINESS.hqLat, BUSINESS.hqLon, 16)
+      .then(days => setWeather(Object.fromEntries(days.map(d => [d.date, d]))))
+      .catch(() => {})
   }, [])
 
   async function update(job: Job, patch: Partial<Job>) {
@@ -141,9 +158,20 @@ export default function SchedulePage() {
               const dayJobs = jobs.filter(j => j.scheduled_date?.slice(0, 10) === date)
               const d = new Date(date + 'T00:00:00')
               const isToday = date === isoDate(new Date())
+              const fly = weather[date]
               return (
                 <div key={date} className={`rounded-lg border p-2 min-h-[90px] ${isToday ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200 bg-white'}`}>
-                  <div className="text-[11px] font-medium text-slate-500 mb-1.5">{d.toLocaleDateString(undefined, { weekday: 'short' })} {d.getDate()}</div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-medium text-slate-500">{d.toLocaleDateString(undefined, { weekday: 'short' })} {d.getDate()}</span>
+                    {fly && (
+                      <span
+                        className={`text-[10px] ${FLY_META[fly.rating].cls}`}
+                        title={`${FLY_META[fly.rating].label} · wind ${Math.round(fly.windMax)}mph, gust ${Math.round(fly.gustMax)}mph, precip ${fly.precipProb}%${fly.reasons.length ? ' — ' + fly.reasons.join(', ') : ''}`}
+                      >
+                        {FLY_META[fly.rating].dot} {Math.round(fly.windMax)}mph
+                      </span>
+                    )}
+                  </div>
                   <div className="space-y-1">
                     {dayJobs.map(job => (
                       <div key={job.id} className="rounded-md border border-slate-100 bg-white px-1.5 py-1">
