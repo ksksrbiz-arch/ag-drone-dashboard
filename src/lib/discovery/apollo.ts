@@ -12,6 +12,15 @@ export interface ApolloProspect {
   industry: string | null
 }
 
+// Visibility into why a search returned what it did (HTTP status, total matches
+// Apollo reports, and which response key the rows came from). Surfaced to the UI.
+export interface ApolloDiag {
+  status: number
+  total: number | null
+  returned: number
+  error: string | null
+}
+
 export function apolloConfigured(): boolean {
   return Boolean(process.env.APOLLO_API_KEY)
 }
@@ -20,9 +29,23 @@ export async function apolloSearchOrganizations(opts: {
   keywords: string[]
   locations: string[]
   perPage?: number
-}): Promise<ApolloProspect[]> {
+}): Promise<{ prospects: ApolloProspect[]; diag: ApolloDiag }> {
+  const diag: ApolloDiag = { status: 0, total: null, returned: 0, error: null }
   const apiKey = process.env.APOLLO_API_KEY
-  if (!apiKey) return []
+  if (!apiKey) {
+    diag.error = 'APOLLO_API_KEY not set'
+    return { prospects: [], diag }
+  }
+
+  const payload: Record<string, unknown> = {
+    page: 1,
+    per_page: Math.min(Math.max(opts.perPage ?? 25, 1), 100),
+  }
+  const tags = opts.keywords.filter(Boolean).slice(0, 10)
+  if (tags.length) payload.q_organization_keyword_tags = tags
+  const locs = opts.locations.filter(Boolean)
+  if (locs.length) payload.organization_locations = locs
+
   try {
     const res = await fetch('https://api.apollo.io/v1/mixed_companies/search', {
       method: 'POST',
@@ -31,20 +54,23 @@ export async function apolloSearchOrganizations(opts: {
         'Cache-Control': 'no-cache',
         'X-Api-Key': apiKey,
       },
-      body: JSON.stringify({
-        q_organization_keyword_tags: opts.keywords.filter(Boolean).slice(0, 10),
-        organization_locations: opts.locations.filter(Boolean),
-        page: 1,
-        per_page: Math.min(Math.max(opts.perPage ?? 25, 1), 100),
-      }),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(20000),
     })
-    if (!res.ok) return []
-    const data = await res.json()
+    diag.status = res.status
+    const data = await res.json().catch(() => null)
+    if (!res.ok) {
+      diag.error = (data && (data.error || data.error_message || data.message)) || `HTTP ${res.status}`
+      return { prospects: [], diag }
+    }
+    diag.total = Number(data?.pagination?.total_entries ?? data?.total_entries ?? null) || null
     const orgs: any[] = data?.organizations ?? data?.accounts ?? []
-    return orgs.map(normalize).filter((o): o is ApolloProspect => Boolean(o && o.business_name))
-  } catch {
-    return []
+    const prospects = orgs.map(normalize).filter((o): o is ApolloProspect => Boolean(o && o.business_name))
+    diag.returned = prospects.length
+    return { prospects, diag }
+  } catch (err: any) {
+    diag.error = String(err?.name === 'TimeoutError' ? 'Apollo timed out' : err?.message ?? err)
+    return { prospects: [], diag }
   }
 }
 

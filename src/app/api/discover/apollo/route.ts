@@ -9,12 +9,13 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-// Default Apollo location filter derived from the business HQ, e.g.
-// "Canby, Oregon" → "Oregon, US". Apollo expects "<State>, <Country>".
-function defaultLocation(): string {
+// Location filter values for Apollo. From the business HQ state we pass a few
+// accepted spellings (Apollo ORs them) since the exact format is finicky.
+function defaultLocations(): string[] {
   const parts = (BUSINESS.city || '').split(',').map(s => s.trim()).filter(Boolean)
   const state = parts.length >= 2 ? parts[parts.length - 1] : parts[0]
-  return state ? `${state}, US` : 'United States'
+  if (!state) return ['United States']
+  return [state, `${state}, US`, `${state}, United States`]
 }
 
 // POST /api/discover/apollo — source prospects from Apollo's org database for a
@@ -39,14 +40,11 @@ export async function POST(req: NextRequest) {
   if (!cat) return NextResponse.json({ ok: false, error: 'Unknown category' }, { status: 400 })
   const dryRun = body?.dryRun !== false
   const limit = Math.min(Math.max(1, Number(body?.limit) || 25), 100)
-  const location = (typeof body?.location === 'string' && body.location.trim()) || defaultLocation()
+  const locations = (typeof body?.location === 'string' && body.location.trim())
+    ? [body.location.trim()]
+    : defaultLocations()
 
-  let found
-  try {
-    found = await apolloSearchOrganizations({ keywords: cat.queries, locations: [location], perPage: limit })
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 })
-  }
+  const { prospects: found, diag } = await apolloSearchOrganizations({ keywords: cat.queries, locations, perPage: limit })
 
   const supabase = getAdminClient()
 
@@ -66,7 +64,7 @@ export async function POST(req: NextRequest) {
   const fresh = candidates.filter(c => !c.dup)
 
   if (dryRun) {
-    return NextResponse.json({ ok: true, dryRun: true, category: cat.key, location, found: candidates.length, newCount: fresh.length, candidates })
+    return NextResponse.json({ ok: true, dryRun: true, category: cat.key, locations, found: candidates.length, newCount: fresh.length, candidates, _diag: diag })
   }
 
   let inserted = 0
@@ -88,5 +86,5 @@ export async function POST(req: NextRequest) {
     inserted = data?.length ?? 0
   }
 
-  return NextResponse.json({ ok: true, dryRun: false, category: cat.key, location, found: candidates.length, inserted })
+  return NextResponse.json({ ok: true, dryRun: false, category: cat.key, locations, found: candidates.length, inserted, _diag: diag })
 }
