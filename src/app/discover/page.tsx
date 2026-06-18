@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { DISCOVERY_CATEGORIES } from '@/lib/discovery/categories'
-import { CITY_SHORT } from '@/lib/business'
+import { CITY_SHORT, APOLLO_PROSPECTING_ENABLED } from '@/lib/business'
 import { useRole } from '@/lib/auth/role'
 
 interface Candidate {
@@ -82,7 +82,7 @@ export default function DiscoverPage() {
             · they’re auto-enriched after adding
           </p>
         </div>
-        {isStaff && (
+        {isStaff && APOLLO_PROSPECTING_ENABLED && (
           <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-medium">
             {(['web', 'apollo'] as const).map(s => (
               <button
