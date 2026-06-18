@@ -10,6 +10,7 @@ import { matchSlash, resolveSlash, type SlashCommand } from '@/lib/assistant/sla
 import { SlashMenu } from '@/components/assistant/SlashMenu'
 import { EntityChips } from '@/components/assistant/EntityChips'
 import { RichMessage } from '@/components/assistant/RichMessage'
+import { downloadFile, fileStamp } from '@/lib/download'
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -355,6 +356,7 @@ export default function Sidekick() {
                       {m.role === 'assistant' && m.content && !(isLastAssistant && sending) && (
                         <div className="flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => copy(m.content)} className="text-[11px] text-slate-400 hover:text-slate-700">Copy</button>
+                          <button onClick={() => downloadFile(`ace-note-${fileStamp()}.md`, m.content, 'text/markdown;charset=utf-8')} className="text-[11px] text-slate-400 hover:text-slate-700">Save .md</button>
                           {isLastAssistant && <button onClick={regenerate} className="text-[11px] text-slate-400 hover:text-slate-700">Regenerate</button>}
                         </div>
                       )}
