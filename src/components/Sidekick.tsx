@@ -9,6 +9,7 @@ import { extractText, isSupportedFile, ATTACH_EXT } from '@/lib/files/extractTex
 import { matchSlash, resolveSlash, type SlashCommand } from '@/lib/assistant/slashCommands'
 import { SlashMenu } from '@/components/assistant/SlashMenu'
 import { EntityChips } from '@/components/assistant/EntityChips'
+import { RichMessage } from '@/components/assistant/RichMessage'
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -343,8 +344,10 @@ export default function Sidekick() {
                   return (
                     <div key={i} className={`group flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                       {m.content || m.role === 'user' ? (
-                        <div className={`max-w-[88%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'bg-brand-500 text-white rounded-br-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'}`}>
-                          {m.content}
+                        <div className={`max-w-[88%] rounded-2xl px-3.5 py-2 text-sm ${m.role === 'user' ? 'bg-brand-500 text-white rounded-br-sm whitespace-pre-wrap' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'}`}>
+                          {m.role === 'assistant' && !(isLastAssistant && sending)
+                            ? <RichMessage content={m.content} />
+                            : <span className="whitespace-pre-wrap">{m.content}</span>}
                           {isLastAssistant && sending && <span className="inline-block w-1.5 h-4 ml-0.5 align-middle bg-slate-400 animate-pulse" />}
                         </div>
                       ) : null}
