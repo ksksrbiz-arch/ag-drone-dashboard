@@ -26,10 +26,29 @@ async function headCount(
   }
 }
 
+// Pull a few lead display-names for a query, so the snapshot can name the most
+// urgent accounts directly (not just count them). Best-effort → [] on any error.
+async function topNames(
+  supabase: ReturnType<typeof getAdminClient>,
+  from: string,
+  build?: (q: any) => any,
+  limit = 5
+): Promise<string[]> {
+  try {
+    let q = supabase.from(from).select('business_name,owner_name,city')
+    if (build) q = build(q)
+    const { data, error } = await q.limit(limit)
+    if (error || !data) return []
+    return (data as any[]).map(r => (r.business_name || r.owner_name || 'Lead'))
+  } catch {
+    return []
+  }
+}
+
 export async function buildOpsSnapshot(): Promise<string> {
   const supabase = getAdminClient()
 
-  const [kpisRes, followups, cooling, heating, newP1] = await Promise.all([
+  const [kpisRes, followups, cooling, heating, newP1, treatNames, atRiskNames] = await Promise.all([
     supabase.rpc('get_ops_kpis').then(
       r => (r.error ? null : (r.data as Record<string, number> | null)),
       () => null
@@ -38,6 +57,8 @@ export async function buildOpsSnapshot(): Promise<string> {
     headCount(supabase, 'lead_cooling_off'),
     headCount(supabase, 'lead_heating_up'),
     headCount(supabase, 'leads', q => q.eq('priority_tier', 'P1').in('priority_trend', ['up', 'new'])),
+    topNames(supabase, 'leads', q => q.eq('action_recommendation', 'TREAT_NOW').order('priority_score', { ascending: false }), 6),
+    topNames(supabase, 'lead_cooling_off', undefined, 4),
   ])
 
   const k = kpisRes ?? {}
@@ -68,6 +89,11 @@ export async function buildOpsSnapshot(): Promise<string> {
   if (has(cooling) && cooling > 0) urgent.push(`${cooling} cooling off (at risk)`)
   if (has(heating) && heating > 0) urgent.push(`${heating} heating up`)
   if (urgent.length) lines.push(`Needs attention: ${urgent.join(' · ')}.`)
+
+  // Name the actual accounts behind the urgent counts, so "who needs attention?"
+  // is answerable with specifics immediately (no tool round-trip).
+  if (treatNames.length) lines.push(`Treat-now accounts: ${treatNames.join(', ')}.`)
+  if (atRiskNames.length) lines.push(`Cooling/at-risk accounts: ${atRiskNames.join(', ')}.`)
 
   // Pipeline + ops.
   const ops: string[] = []
