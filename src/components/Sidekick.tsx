@@ -11,6 +11,8 @@ import { SlashMenu } from '@/components/assistant/SlashMenu'
 import { EntityChips } from '@/components/assistant/EntityChips'
 import { RichMessage } from '@/components/assistant/RichMessage'
 import { downloadFile, fileStamp } from '@/lib/download'
+import { saveNoteToKnowledge } from '@/lib/assistant/kb'
+import { useRole } from '@/lib/auth/role'
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -54,6 +56,8 @@ const SparkIcon = ({ s = 18 }: { s?: number }) => (
 export default function Sidekick() {
   const pathname = usePathname()
   const router = useRouter()
+  const { isStaff } = useRole()
+  const [savedKb, setSavedKb] = useState<Set<number>>(new Set())
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
@@ -357,6 +361,14 @@ export default function Sidekick() {
                         <div className="flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => copy(m.content)} className="text-[11px] text-slate-400 hover:text-slate-700">Copy</button>
                           <button onClick={() => downloadFile(`ace-note-${fileStamp()}.md`, m.content, 'text/markdown;charset=utf-8')} className="text-[11px] text-slate-400 hover:text-slate-700">Save .md</button>
+                          {isStaff && (
+                            <button
+                              onClick={async () => { if (await saveNoteToKnowledge(m.content)) setSavedKb(s => new Set(s).add(i)) }}
+                              className="text-[11px] text-slate-400 hover:text-slate-700"
+                            >
+                              {savedKb.has(i) ? 'Saved ✓' : 'Save to Knowledge'}
+                            </button>
+                          )}
                           {isLastAssistant && <button onClick={regenerate} className="text-[11px] text-slate-400 hover:text-slate-700">Regenerate</button>}
                         </div>
                       )}
