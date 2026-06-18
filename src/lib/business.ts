@@ -52,6 +52,12 @@ export const PRODUCT_NAME = str(process.env.NEXT_PUBLIC_PRODUCT_NAME, 'Sortie')
 export const PRODUCT_TAGLINE = str(process.env.NEXT_PUBLIC_PRODUCT_TAGLINE, 'Drone Operations Platform')
 export const ASSISTANT_NAME = str(process.env.NEXT_PUBLIC_ASSISTANT_NAME, 'Ace')
 
+// Apollo prospecting (org search) requires a paid Apollo plan with API access.
+// Off by default so the Discover source toggle stays hidden until you opt in:
+//   NEXT_PUBLIC_APOLLO_PROSPECTING=true
+export const APOLLO_PROSPECTING_ENABLED =
+  String(process.env.NEXT_PUBLIC_APOLLO_PROSPECTING ?? '').toLowerCase() === 'true'
+
 // Label for the precision-intelligence module (the satellite/risk hub). Ag
 // tenants may set "EFB Intel"; the de-ag default is the neutral "Intel".
 //   NEXT_PUBLIC_INTEL_LABEL   nav label, e.g. "Intel" | "EFB Intel"
