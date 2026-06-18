@@ -44,7 +44,18 @@ export default function DiscoverPage() {
         setMsg(`Failed: ${json.error ?? res.statusText}`)
       } else if (dryRun) {
         setResult(json)
-        if (json.found === 0) setMsg('No prospects found — try a different category.')
+        if (json.found === 0) {
+          const d = json._diag
+          if (source === 'apollo' && d) {
+            setMsg(
+              d.error
+                ? `Apollo: ${d.error}${d.status ? ` (HTTP ${d.status})` : ''}`
+                : `Apollo returned ${d.total ?? 0} match${d.total === 1 ? '' : 'es'} for this category/location — try a broader category or a different location.`
+            )
+          } else {
+            setMsg('No prospects found — try a different category.')
+          }
+        }
       } else {
         setMsg(`Added ${json.inserted} new lead(s) — they’re queued for AI research now.`)
         setResult((r: any) => ({ ...r, _added: true }))
