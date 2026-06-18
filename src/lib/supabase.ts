@@ -265,6 +265,7 @@ export interface Alert {
   title: string
   body: string | null
   read: boolean
+  notified_at?: string | null
 }
 
 export interface Field {

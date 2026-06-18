@@ -46,6 +46,16 @@ async function handle(req: NextRequest) {
       }
     }
 
+    // Push any *new* urgent transitions (treat-now / new P1) to Slack right
+    // away — on cron and on manual "Run Now" alike — so staff hear about them
+    // within seconds, not at tomorrow's digest. Deduped via alerts.notified_at.
+    try {
+      const { postNewAlertsToSlack } = await import('@/lib/alerts')
+      await postNewAlertsToSlack()
+    } catch {
+      /* proactive alerts are best-effort */
+    }
+
     // On the daily cron, post the ops digest to Slack (best-effort). Folds the
     // digest into the existing cron so we don't need a second schedule.
     if (isCron) {
