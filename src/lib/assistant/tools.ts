@@ -417,6 +417,28 @@ export const TOOLS = [
       required: [],
     },
   },
+  {
+    name: 'queue_outreach',
+    description:
+      'Draft review-first outreach and ADD it to the Outreach queue (this does NOT send) — for ONE lead (lead_id, name search, or the lead on screen) or a BATCH matching filters (e.g. all TREAT_NOW accounts, a county, a crop, a tier). The team then reviews, edits, approves and sends from the Outreach page. Leads that already have an open draft are skipped, so it never double-queues. Use for "queue outreach for the treat-now leads", "draft and queue a follow-up to Acme Farms", "queue emails for P1 hazelnut growers". With no lead and no filters it queues the top outreach-ready leads. Staff only; batch capped at 20.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        lead_id: { type: 'string', description: 'queue a single lead by id' },
+        search: { type: 'string', description: 'queue a single lead by business/owner name' },
+        channel: { type: 'string', enum: ['email', 'sms'], description: 'default email' },
+        limit: { type: 'number', description: 'batch size, default 8, max 20' },
+        action_recommendation: { type: 'string', enum: ['TREAT_NOW', 'SCOUT_NOW', 'CONTACT_NOW', 'MONITOR'], description: 'batch filter, e.g. TREAT_NOW' },
+        priority_tier: { type: 'string', enum: ['P1', 'P2', 'P3', 'P4'], description: 'batch filter' },
+        county: { type: 'string', description: 'batch filter (partial match)' },
+        city: { type: 'string', description: 'batch filter (partial match)' },
+        crop: { type: 'string', description: 'batch filter on primary_crop (partial match)' },
+        vertical: { type: 'string', enum: ['ag_spray', 'insurance', 'real_estate', 'construction', 'energy', 'mapping', 'inspection', 'survey', 'delivery'], description: 'batch filter' },
+        min_priority_score: { type: 'number', description: 'batch filter: only leads at/above this score' },
+      },
+      required: [],
+    },
+  },
   // ── Actions (staff only) ─────────────────────────────────────────────────
   {
     name: 'update_lead_stage',
@@ -562,6 +584,10 @@ export const TOOLS = [
 
 type Args = Record<string, any>
 
+// Filter keys that turn queue_outreach into a batch (vs. a single named lead).
+const BATCH_FILTER_KEYS = ['action_recommendation', 'priority_tier', 'county', 'city', 'crop', 'vertical', 'min_priority_score']
+const hasBatchFilters = (a: Args) => BATCH_FILTER_KEYS.some(k => a[k] != null && a[k] !== '')
+
 function applyLeadFilters(q: any, a: Args) {
   if (a.search)
     q = q.or(`business_name.ilike.%${a.search}%,owner_name.ilike.%${a.search}%`)
@@ -687,7 +713,7 @@ const MUTATING = new Set([
   'update_lead_stage', 'tag_lead', 'convert_lead_to_customer', 'run_operation',
   'bulk_tag_leads', 'bulk_update_stage', 'add_to_knowledge',
   'update_job_status', 'create_job', 'update_customer_status', 'add_customer_note',
-  'create_lead', 'mark_alerts_read', 'log_activity',
+  'create_lead', 'mark_alerts_read', 'log_activity', 'queue_outreach',
 ])
 
 /** Human-readable one-liner for an audit-log entry. */
@@ -707,6 +733,7 @@ function summarizeAction(name: string, _args: Args, r: any): string {
     case 'create_lead': return `Created lead "${r.lead}"`
     case 'mark_alerts_read': return `Marked ${r.marked} alert${r.marked === 1 ? '' : 's'} read`
     case 'log_activity': return `Logged a ${r.kind} on ${r.entity}`
+    case 'queue_outreach': return r.lead ? `Queued ${r.channel} outreach for ${r.lead}` : `Queued ${r.queued} outreach draft${r.queued === 1 ? '' : 's'}`
     default: return `Ran ${name}`
   }
 }
@@ -1114,6 +1141,56 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
         return { error: String(err?.message ?? err) }
       }
     }
+    case 'queue_outreach': {
+      if (!ctx.isStaff) return staffOnly
+      const { aiConfigured } = await import('@/lib/ai/llm')
+      if (!aiConfigured()) return { error: 'No AI provider configured for drafting.' }
+      const { generateOutreachBatch } = await import('@/lib/outreach/queue')
+      const channel: 'email' | 'sms' = args.channel === 'sms' ? 'sms' : 'email'
+      const contactLabel = channel === 'sms' ? 'phone' : 'email'
+
+      // Single named lead (id / search / on-screen focus) vs. a filtered batch.
+      const single = args.lead_id || args.search || (!hasBatchFilters(args) && ctx.focusLeadId)
+      if (single) {
+        const r = await resolveLead(supabase, args, ctx)
+        if (r.error) return r
+        const l = r.lead
+        const name = l.business_name ?? l.owner_name
+        const reachable = channel === 'sms' ? !!l.phone : !!l.email
+        if (!reachable) return { error: `${name} has no ${contactLabel} on file — try the other channel or add contact info first.` }
+        const res = await generateOutreachBatch({ channel, leadId: l.id, reason: 'manual' })
+        if (!res.ok) return { error: res.error ?? 'Could not queue outreach.' }
+        if (!res.generated) return { ok: true, noop: true, lead: name, message: `${name} already has an open draft in the outreach queue.` }
+        ctx.actions.push({ type: 'refresh' })
+        ctx.undo = { label: `queued draft for ${name}`, tool: '_dismiss_drafts', args: { ids: res.results.map(d => d.id) } }
+        return { ok: true, queued: res.generated, channel, lead: name, subject: res.results[0]?.subject ?? null }
+      }
+
+      // Batch — draft for every matching outreach-ready lead, hottest first.
+      const filters = {
+        action_recommendation: args.action_recommendation,
+        priority_tier: args.priority_tier,
+        county: args.county,
+        city: args.city,
+        crop: args.crop,
+        vertical: args.vertical,
+        min_priority_score: typeof args.min_priority_score === 'number' ? args.min_priority_score : undefined,
+      }
+      const res = await generateOutreachBatch({ channel, limit: args.limit, filters })
+      if (!res.ok) return { error: res.error ?? 'Could not queue outreach.' }
+      if (!res.generated) {
+        return { ok: true, noop: true, queued: 0, skipped: res.skipped, message: `Nothing new to queue — matching leads are already drafted, have no ${contactLabel} on file, or none matched.` }
+      }
+      ctx.actions.push({ type: 'refresh' })
+      ctx.undo = { label: `${res.generated} queued draft${res.generated === 1 ? '' : 's'}`, tool: '_dismiss_drafts', args: { ids: res.results.map(d => d.id) } }
+      return {
+        ok: true,
+        queued: res.generated,
+        skipped: res.skipped,
+        channel,
+        drafts: res.results.map(d => ({ name: d.name, reason: d.reason, subject: d.subject })),
+      }
+    }
 
     // ── navigation (optionally with leads filters) ──────────────────────────
     case 'navigate': {
@@ -1474,6 +1551,15 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       const items: { id: string; loi_status: string }[] = Array.isArray(args.items) ? args.items : []
       if (!items.length) return { error: 'bad undo args' }
       for (const it of items) await supabase.from('leads').update({ loi_status: it.loi_status }).eq('id', it.id)
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true }
+    }
+    case '_dismiss_drafts': {
+      if (!ctx.isStaff) return staffOnly
+      const ids: string[] = Array.isArray(args.ids) ? args.ids : []
+      if (!ids.length) return { error: 'bad undo args' }
+      const { error } = await supabase.from('outreach_drafts').update({ status: 'dismissed' }).in('id', ids)
+      if (error) return { error: error.message }
       ctx.actions.push({ type: 'refresh' })
       return { ok: true }
     }
