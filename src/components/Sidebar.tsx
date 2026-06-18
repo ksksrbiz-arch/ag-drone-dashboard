@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { BUSINESS, BRAND_NAME, PRODUCT_NAME, ASSISTANT_NAME, INTEL_LABEL } from '@/lib/business'
 import { supabase } from '@/lib/supabase'
+import { useUnreadAlerts } from '@/lib/useUnreadAlerts'
 
 const navItems = [
   { href: '/',           label: 'Overview',       icon: '📊' },
@@ -40,13 +41,14 @@ function Brand() {
   )
 }
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({ onNavigate, unreadAlerts = 0 }: { onNavigate?: () => void; unreadAlerts?: number }) {
   const pathname = usePathname()
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href))
   return (
     <nav className="flex-1 px-3 py-4 space-y-1">
       {navItems.map((item) => {
         const active = isActive(item.href)
+        const badge = item.href === '/alerts' && unreadAlerts > 0 ? unreadAlerts : 0
         return (
           <Link
             key={item.href}
@@ -60,6 +62,14 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-full bg-brand-400" />}
             <span className="text-base">{item.icon}</span>
             <span>{item.label}</span>
+            {badge > 0 && (
+              <span
+                className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full bg-red-500 text-white tabular-nums"
+                aria-label={`${badge} unread`}
+              >
+                {badge > 9 ? '9+' : badge}
+              </span>
+            )}
           </Link>
         )
       })}
@@ -92,6 +102,7 @@ const PANEL = 'bg-gradient-to-b from-slate-900 to-slate-950'
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
+  const unreadAlerts = useUnreadAlerts()
   // The login / auth pages render standalone (no app chrome).
   if (pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/quote')) return null
   return (
@@ -100,11 +111,14 @@ export default function Sidebar() {
       <header className={`md:hidden sticky top-0 z-30 flex items-center justify-between px-4 h-14 ${PANEL} border-b border-white/10`}>
         <Brand />
         <button
-          aria-label="Open menu"
+          aria-label={unreadAlerts > 0 ? `Open menu — ${unreadAlerts} unread alerts` : 'Open menu'}
           onClick={() => setOpen(true)}
-          className="tap-sq inline-flex items-center justify-center text-slate-200 -mr-2 rounded-lg hover:bg-white/10"
+          className="tap-sq relative inline-flex items-center justify-center text-slate-200 -mr-2 rounded-lg hover:bg-white/10"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round"/></svg>
+          {unreadAlerts > 0 && (
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-slate-900" />
+          )}
         </button>
       </header>
 
@@ -117,7 +131,7 @@ export default function Sidebar() {
               <Brand />
               <button aria-label="Close menu" onClick={() => setOpen(false)} className="tap-sq inline-flex items-center justify-center text-slate-300 text-2xl leading-none">×</button>
             </div>
-            <NavLinks onNavigate={() => setOpen(false)} />
+            <NavLinks onNavigate={() => setOpen(false)} unreadAlerts={unreadAlerts} />
             <Footer />
           </div>
         </div>
@@ -126,7 +140,7 @@ export default function Sidebar() {
       {/* Desktop sidebar */}
       <aside className={`hidden md:flex w-60 shrink-0 flex-col ${PANEL}`}>
         <div className="px-5 py-5 border-b border-white/10"><Brand /></div>
-        <NavLinks />
+        <NavLinks unreadAlerts={unreadAlerts} />
         <Footer />
       </aside>
     </>
