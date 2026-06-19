@@ -63,6 +63,7 @@ const TOOL_STATUS: Record<string, string> = {
   update_lead: 'Updating the lead…',
   convert_lead_to_customer: 'Converting to a customer…',
   run_operation: 'Running that operation…',
+  find_prospects: 'Searching the web for prospects…',
   bulk_tag_leads: 'Tagging the matching leads…',
   bulk_update_stage: 'Updating the matching leads…',
 }

@@ -563,6 +563,20 @@ export const TOOLS = [
     },
   },
   {
+    name: 'find_prospects',
+    description:
+      'Source NEW prospects from the web for a service category (roofing/insurance, real estate, construction, solar/energy, ag spraying, mapping, inspection, survey, delivery). Use for "find roofing prospects", "go find some new vineyard leads", "discover construction companies near here". Previews fresh (non-duplicate) candidates by default; pass add:true to actually add them as leads (source=ai_discovery, then auto-enriched). category is a free-text term matched to a category. Staff only; takes ~20-40s.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', description: 'what kind of prospect, e.g. "roofing", "vineyard", "solar", "survey"' },
+        add: { type: 'boolean', description: 'true to add them as leads; omit/false to just preview' },
+        limit: { type: 'number', description: 'how many to find (default 8, max 15)' },
+      },
+      required: ['category'],
+    },
+  },
+  {
     name: 'create_lead',
     description:
       'Create a new lead — use to capture a prospect from a call or referral ("add a lead: Johnson Farms, hazelnuts in Marion, 80 acres"). business_name is required; everything else is optional. Staff only.',
@@ -800,7 +814,7 @@ const staffOnly = { error: 'That action needs owner/partner access — you have 
 
 // Write tools whose successful runs we record in the audit log.
 const MUTATING = new Set([
-  'update_lead_stage', 'tag_lead', 'update_lead', 'convert_lead_to_customer', 'run_operation',
+  'update_lead_stage', 'tag_lead', 'update_lead', 'convert_lead_to_customer', 'run_operation', 'find_prospects',
   'bulk_tag_leads', 'bulk_update_stage', 'add_to_knowledge',
   'update_job_status', 'schedule_job', 'create_job', 'update_customer_status', 'add_customer_note',
   'create_customer', 'add_contract',
@@ -815,6 +829,7 @@ function summarizeAction(name: string, _args: Args, r: any): string {
     case 'update_lead': return `Updated ${r.lead} (${(r.updated ?? []).join(', ')})`
     case 'convert_lead_to_customer': return `Converted ${r.name} to a customer`
     case 'run_operation': return `Ran ${r.operation}`
+    case 'find_prospects': return r.dryRun ? `Found ${r.newCount} new ${r.category} prospect${r.newCount === 1 ? '' : 's'}` : `Added ${r.inserted} ${r.category} prospect${r.inserted === 1 ? '' : 's'}`
     case 'bulk_tag_leads': return `Tagged ${r.tagged} leads (${(r.tags ?? []).join(', ')})`
     case 'bulk_update_stage': return `Set ${r.updated} leads to ${r.loi_status}`
     case 'add_to_knowledge': return `${r.updated ? 'Updated' : 'Saved'} knowledge doc "${r.title}" in ${r.folder}`
@@ -1527,6 +1542,50 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       } catch (err: any) {
         return { error: String(err?.message ?? err) }
       }
+    }
+    case 'find_prospects': {
+      if (!ctx.isStaff) return staffOnly
+      const { discoveryConfigured, discoverLeads } = await import('@/lib/discovery/discover')
+      const { DISCOVERY_CATEGORIES, categoryByKey } = await import('@/lib/discovery/categories')
+      if (!discoveryConfigured()) {
+        return { error: 'Lead discovery needs a web-search provider (Brave/Tavily) and Groq configured.' }
+      }
+      const term = String(args.category ?? '').toLowerCase().trim()
+      let cat = term ? categoryByKey(term) : undefined
+      if (!cat && term) {
+        cat = DISCOVERY_CATEGORIES.find(c =>
+          [c.key, c.label, c.tag, c.vertical, ...c.queries].join(' ').toLowerCase().includes(term)
+        )
+      }
+      if (!cat) {
+        return { error: `Which kind of prospect? One of: ${DISCOVERY_CATEGORIES.map(c => c.label).join(', ')}.` }
+      }
+      const limit = cap(args.limit, 8, 15)
+      let found
+      try {
+        ;({ leads: found } = await discoverLeads(cat, limit))
+      } catch (err: any) {
+        return { error: String(err?.message ?? err) }
+      }
+      const { data: existing } = await supabase.from('leads').select('business_name').not('business_name', 'is', null)
+      const set = new Set((existing ?? []).map((r: any) => String(r.business_name).toLowerCase().trim()))
+      const fresh = (found ?? []).filter((f: any) => f.business_name && !set.has(String(f.business_name).toLowerCase().trim()))
+      const names = fresh.slice(0, 8).map((f: any) => f.business_name)
+
+      // Preview by default; only insert when explicitly told to add.
+      if (args.add !== true) {
+        return { ok: true, dryRun: true, category: cat.label, found: (found ?? []).length, newCount: fresh.length, names }
+      }
+      if (!fresh.length) return { ok: true, category: cat.label, inserted: 0, message: 'No new prospects to add — all were already in the database.' }
+      const rows = fresh.map((f: any) => ({
+        business_name: f.business_name, city: f.city, county: f.county, website: f.website,
+        phone: f.phone, email: f.email, vertical: cat!.vertical, loi_status: 'not_contacted',
+        source: 'ai_discovery', tags: [cat!.tag], notes: f.notes,
+      }))
+      const { data, error } = await supabase.from('leads').insert(rows).select('id')
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true, category: cat.label, inserted: data?.length ?? 0, names }
     }
 
     // ── capture + inbox (staff only) ────────────────────────────────────────
