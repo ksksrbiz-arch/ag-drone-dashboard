@@ -80,6 +80,7 @@ const cap = (n: unknown, def: number, max: number) => {
   return Math.min(Math.max(1, v), max)
 }
 
+const round2 = (n: number) => Math.round(n * 100) / 100
 const money = (v: unknown) => (v == null ? '' : `$${Math.round(Number(v) || 0).toLocaleString()}`)
 const compact = (parts: (string | number | null | undefined)[]) =>
   parts.filter(p => p != null && p !== '').join(' · ')
@@ -196,6 +197,32 @@ export const TOOLS = [
         enrichment_status: { type: 'string' }, min_priority_score: { type: 'number' },
       },
       required: ['group_by'],
+    },
+  },
+  {
+    name: 'aggregate_leads',
+    description:
+      'Compute an exact statistic over a numeric lead field across filtered leads — sum, average, min, max, or count of non-null values. Use this instead of eyeballing rows for "average deal size", "total est. revenue of P1s", "biggest acreage", "average priority score in Marion". Optional group_by breaks the stat out per crop/county/tier/etc. Same filters as query_leads. Always prefer this for any math over many leads.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        field: {
+          type: 'string',
+          enum: ['est_annual_revenue', 'est_acreage', 'priority_score', 'lead_score', 'composite_efb_risk', 'data_completeness'],
+          description: 'the numeric field to aggregate',
+        },
+        op: { type: 'string', enum: ['sum', 'avg', 'min', 'max', 'count'], description: 'statistic to compute (default avg)' },
+        group_by: {
+          type: 'string',
+          enum: ['primary_crop', 'county', 'city', 'priority_tier', 'loi_status', 'action_recommendation', 'vertical', 'enrichment_status'],
+          description: 'optional — break the stat out per group, largest first',
+        },
+        county: { type: 'string' }, city: { type: 'string' }, crop: { type: 'string' },
+        vertical: { type: 'string' }, priority_tier: { type: 'string' },
+        action_recommendation: { type: 'string' }, loi_status: { type: 'string' },
+        enrichment_status: { type: 'string' }, min_priority_score: { type: 'number' },
+      },
+      required: ['field'],
     },
   },
   {
@@ -823,6 +850,48 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
         .map(([value, count]) => ({ value, count }))
         .sort((a, b) => b.count - a.count)
       return { group_by: dim, total: data?.length ?? 0, groups }
+    }
+    case 'aggregate_leads': {
+      const FIELDS = ['est_annual_revenue', 'est_acreage', 'priority_score', 'lead_score', 'composite_efb_risk', 'data_completeness']
+      const DIMS = ['primary_crop', 'county', 'city', 'priority_tier', 'loi_status', 'action_recommendation', 'vertical', 'enrichment_status']
+      const field = FIELDS.includes(args.field) ? args.field : 'priority_score'
+      const op = ['sum', 'avg', 'min', 'max', 'count'].includes(args.op) ? args.op : 'avg'
+      const dim = DIMS.includes(args.group_by) ? args.group_by : null
+      const cols = dim ? `${field}, ${dim}` : field
+      let q = supabase.from('leads').select(cols).limit(5000)
+      q = applyLeadFilters(q, args)
+      const { data, error } = await q
+      if (error) return { error: error.message }
+      const rows = (data ?? []) as any[]
+
+      // Compute one statistic over a set of numeric values (nulls ignored).
+      const stat = (vals: number[]): number | null => {
+        if (op === 'count') return vals.length
+        if (!vals.length) return null
+        if (op === 'sum') return round2(vals.reduce((s, v) => s + v, 0))
+        if (op === 'avg') return round2(vals.reduce((s, v) => s + v, 0) / vals.length)
+        if (op === 'min') return Math.min(...vals)
+        if (op === 'max') return Math.max(...vals)
+        return null
+      }
+      const numbersOf = (rs: any[]) => rs.map(r => Number(r[field])).filter(v => Number.isFinite(v))
+
+      if (!dim) {
+        const vals = numbersOf(rows)
+        return { field, op, n: vals.length, value: stat(vals) }
+      }
+      const buckets: Record<string, number[]> = {}
+      for (const r of rows) {
+        const key = r[dim] == null || r[dim] === '' ? '(none)' : String(r[dim])
+        ;(buckets[key] ||= []).push(Number(r[field]))
+      }
+      const groups = Object.entries(buckets)
+        .map(([value, vals]) => {
+          const nums = vals.filter(v => Number.isFinite(v))
+          return { value, n: nums.length, [op]: stat(nums) as number | null }
+        })
+        .sort((a, b) => (Number(b[op] ?? -Infinity)) - (Number(a[op] ?? -Infinity)))
+      return { field, op, group_by: dim, total_rows: rows.length, groups }
     }
     case 'query_customers': {
       let q = supabase.from('customers').select(CUSTOMER_COLS).limit(cap(args.limit, 15, 50))
