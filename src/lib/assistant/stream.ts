@@ -39,6 +39,8 @@ const TOOL_STATUS: Record<string, string> = {
   get_customer_detail: 'Pulling up that customer…',
   update_customer_status: 'Updating the customer…',
   add_customer_note: 'Adding that note…',
+  create_customer: 'Creating the customer…',
+  add_contract: 'Adding the contract…',
   query_jobs: 'Checking jobs…',
   get_finance_summary: 'Tallying the money…',
   update_job_status: 'Updating the job…',

@@ -273,6 +273,38 @@ export const TOOLS = [
     },
   },
   {
+    name: 'create_customer',
+    description:
+      'Create a new customer directly (not from a lead). Use for "add a customer named …", "set up Smith Farms as a customer". Provide business_name and/or contact_name, plus any of phone, email, city, county, state, primary_crop, est_acreage, status (prospect/active/inactive, default prospect). Skips creation if a customer with that business name already exists. Staff only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        business_name: { type: 'string' }, contact_name: { type: 'string' },
+        phone: { type: 'string' }, email: { type: 'string' },
+        city: { type: 'string' }, county: { type: 'string' }, state: { type: 'string' },
+        primary_crop: { type: 'string' }, est_acreage: { type: 'number' },
+        status: { type: 'string', enum: ['prospect', 'active', 'inactive'] },
+      },
+    },
+  },
+  {
+    name: 'add_contract',
+    description:
+      'Add a contract, quote, or LOI to a customer. Use for "add a service agreement for Smith Farms at $12k", "log a quote for …", "create an LOI for …". Identify the customer by customer_id or a name search. title is required; type is loi/service_agreement/quote (default service_agreement); status default draft; optional annual_value, start_date, end_date (YYYY-MM-DD), terms. Staff only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        customer_id: { type: 'string' }, search: { type: 'string', description: 'customer name' },
+        title: { type: 'string' },
+        type: { type: 'string', enum: ['loi', 'service_agreement', 'quote'] },
+        status: { type: 'string', enum: ['draft', 'sent', 'signed', 'active', 'expired', 'declined'] },
+        annual_value: { type: 'number' },
+        start_date: { type: 'string' }, end_date: { type: 'string' }, terms: { type: 'string' },
+      },
+      required: ['title'],
+    },
+  },
+  {
     name: 'log_activity',
     description:
       'Log an activity to a record\'s timeline — a call, email, SMS, meeting, or note. Use for "log a call with X: …", "note that …", "record that I emailed …". Identify the record by entity_type plus a name search (or the lead currently open). Staff only.',
@@ -755,6 +787,7 @@ const MUTATING = new Set([
   'update_lead_stage', 'tag_lead', 'convert_lead_to_customer', 'run_operation',
   'bulk_tag_leads', 'bulk_update_stage', 'add_to_knowledge',
   'update_job_status', 'schedule_job', 'create_job', 'update_customer_status', 'add_customer_note',
+  'create_customer', 'add_contract',
   'create_lead', 'mark_alerts_read', 'log_activity', 'queue_outreach',
 ])
 
@@ -773,6 +806,8 @@ function summarizeAction(name: string, _args: Args, r: any): string {
     case 'create_job': return `Created job "${r.job}" (${r.status})`
     case 'update_customer_status': return `Set ${r.customer} to ${r.status}`
     case 'add_customer_note': return `Added a note to ${r.customer}`
+    case 'create_customer': return r.duplicate ? `${r.name} is already a customer` : `Created customer ${r.name}`
+    case 'add_contract': return `Added ${r.type?.replace('_', ' ')} "${r.contract}" to ${r.customer}`
     case 'create_lead': return `Created lead "${r.lead}"`
     case 'mark_alerts_read': return `Marked ${r.marked} alert${r.marked === 1 ? '' : 's'} read`
     case 'log_activity': return `Logged a ${r.kind} on ${r.entity}`
@@ -973,6 +1008,54 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       if (error) return { error: error.message }
       ctx.undo = { label: `note on ${name}`, tool: '_revert_customer', args: { id: c.id, patch: { notes: prev } } }
       return { ok: true, customer: name, note }
+    }
+    case 'create_customer': {
+      if (!ctx.isStaff) return staffOnly
+      const business_name = args.business_name != null ? String(args.business_name).trim() : ''
+      const contact_name = args.contact_name != null ? String(args.contact_name).trim() : ''
+      if (!business_name && !contact_name) return { error: 'A business or contact name is required.' }
+      const status = ['prospect', 'active', 'inactive'].includes(args.status) ? args.status : 'prospect'
+      // Avoid an obvious duplicate by business name.
+      if (business_name) {
+        const { data: dup } = await supabase.from('customers').select('id').ilike('business_name', business_name).limit(1)
+        if (dup?.[0]) return { ok: true, duplicate: true, customer_id: dup[0].id, name: business_name, message: `${business_name} is already a customer.` }
+      }
+      const row: any = { status }
+      for (const k of ['business_name', 'contact_name', 'phone', 'email', 'city', 'county', 'state', 'primary_crop'] as const) {
+        if (args[k] != null && String(args[k]).trim()) row[k] = String(args[k]).trim()
+      }
+      if (typeof args.est_acreage === 'number') row.est_acreage = args.est_acreage
+      const { data, error } = await supabase.from('customers').insert(row).select('id').single()
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      const name = business_name || contact_name
+      if (data?.id) {
+        ctx.undo = { label: `customer ${name}`, tool: '_delete_customer', args: { id: data.id } }
+        await logTimeline(supabase, ctx, 'customer', data.id, 'system', 'Created')
+      }
+      return { ok: true, customer_id: data?.id, name, status }
+    }
+    case 'add_contract': {
+      if (!ctx.isStaff) return staffOnly
+      const title = String(args.title ?? '').trim()
+      if (!title) return { error: 'A contract title is required.' }
+      const r = await resolveCustomer(supabase, args)
+      if (r.error) return r
+      const c = r.customer
+      const cname = c.business_name ?? c.contact_name
+      const type = ['loi', 'service_agreement', 'quote'].includes(args.type) ? args.type : 'service_agreement'
+      const status = ['draft', 'sent', 'signed', 'active', 'expired', 'declined'].includes(args.status) ? args.status : 'draft'
+      const row: any = { customer_id: c.id, title, type, status }
+      if (typeof args.annual_value === 'number') row.annual_value = args.annual_value
+      for (const k of ['start_date', 'end_date', 'terms'] as const) {
+        if (args[k] != null && String(args[k]).trim()) row[k] = String(args[k]).trim()
+      }
+      const { data, error } = await supabase.from('contracts').insert(row).select('id').single()
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      if (data?.id) ctx.undo = { label: `contract "${title}" on ${cname}`, tool: '_delete_contract', args: { id: data.id } }
+      await logTimeline(supabase, ctx, 'customer', c.id, 'system', `Added ${type.replace('_', ' ')} "${title}"${typeof args.annual_value === 'number' ? ` (${money(args.annual_value)})` : ''}`)
+      return { ok: true, customer: cname, contract: title, type, status }
     }
     case 'query_jobs': {
       let q = supabase.from('jobs').select(JOB_COLS).limit(cap(args.limit, 15, 50))
@@ -1614,6 +1697,14 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       if (!ctx.isStaff) return staffOnly
       if (!args.id || !args.patch) return { error: 'bad undo args' }
       const { error } = await supabase.from('customers').update(args.patch).eq('id', args.id)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      return { ok: true }
+    }
+    case '_delete_contract': {
+      if (!ctx.isStaff) return staffOnly
+      if (!args.id) return { error: 'bad undo args' }
+      const { error } = await supabase.from('contracts').delete().eq('id', args.id)
       if (error) return { error: error.message }
       ctx.actions.push({ type: 'refresh' })
       return { ok: true }
