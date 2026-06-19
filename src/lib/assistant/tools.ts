@@ -559,6 +559,21 @@ export const TOOLS = [
     },
   },
   {
+    name: 'schedule_job',
+    description:
+      'Schedule or dispatch a job — set its date and/or assign a pilot and equipment. Use for "schedule the Smith Farms job for Tuesday", "put Bo on the Henderson job", "move that job to next Friday", "assign the T50 to the Polk job". Identify the job by job_id or a job-title/customer name search. date is YYYY-MM-DD; setting a date moves a quoted job to scheduled. Staff only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string' },
+        search: { type: 'string', description: 'job title or customer name' },
+        date: { type: 'string', description: 'YYYY-MM-DD' },
+        pilot: { type: 'string', description: 'pilot name to assign' },
+        equipment: { type: 'string', description: 'drone/equipment to assign' },
+      },
+    },
+  },
+  {
     name: 'create_job',
     description:
       'Create a new job for a customer (or lead). Provide a job_title and identify the customer by customer_search or the lead by lead_search. Optionally set scheduled_date (YYYY-MM-DD) and quote_amount. Staff only.',
@@ -739,7 +754,7 @@ const staffOnly = { error: 'That action needs owner/partner access — you have 
 const MUTATING = new Set([
   'update_lead_stage', 'tag_lead', 'convert_lead_to_customer', 'run_operation',
   'bulk_tag_leads', 'bulk_update_stage', 'add_to_knowledge',
-  'update_job_status', 'create_job', 'update_customer_status', 'add_customer_note',
+  'update_job_status', 'schedule_job', 'create_job', 'update_customer_status', 'add_customer_note',
   'create_lead', 'mark_alerts_read', 'log_activity', 'queue_outreach',
 ])
 
@@ -754,6 +769,7 @@ function summarizeAction(name: string, _args: Args, r: any): string {
     case 'bulk_update_stage': return `Set ${r.updated} leads to ${r.loi_status}`
     case 'add_to_knowledge': return `${r.updated ? 'Updated' : 'Saved'} knowledge doc "${r.title}" in ${r.folder}`
     case 'update_job_status': return `Set job ${r.job} to ${r.status}`
+    case 'schedule_job': return `Scheduled ${r.job}${r.scheduled_date ? ` for ${r.scheduled_date}` : ''}${r.pilot ? ` · ${r.pilot}` : ''}`
     case 'create_job': return `Created job "${r.job}" (${r.status})`
     case 'update_customer_status': return `Set ${r.customer} to ${r.status}`
     case 'add_customer_note': return `Added a note to ${r.customer}`
@@ -1458,6 +1474,39 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       }
       await logTimeline(supabase, ctx, 'job', j.id, 'stage', `Status → ${args.status}`)
       return { ok: true, job: label, status: args.status }
+    }
+    case 'schedule_job': {
+      if (!ctx.isStaff) return staffOnly
+      const r = await resolveJob(supabase, args)
+      if (r.error) return r
+      const j = r.job
+      const label = j.job_title ?? 'job'
+      const date = String(args.date ?? '').trim()
+      if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Give the date as YYYY-MM-DD.' }
+      const pilot = args.pilot != null ? String(args.pilot).trim() || null : undefined
+      const equipment = args.equipment != null ? String(args.equipment).trim() || null : undefined
+      if (!date && pilot === undefined && equipment === undefined) {
+        return { error: 'Nothing to schedule — give a date and/or a pilot/equipment.' }
+      }
+      const patch: any = {}
+      if (date) {
+        patch.scheduled_date = date
+        // Setting a date moves a quote into the schedule.
+        if (j.status === 'quoted') patch.status = 'scheduled'
+      }
+      if (pilot !== undefined) patch.pilot = pilot
+      if (equipment !== undefined) patch.equipment = equipment
+      const { error } = await supabase.from('jobs').update(patch).eq('id', j.id)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      ctx.undo = {
+        label: `${label}'s schedule`,
+        tool: '_revert_job',
+        args: { id: j.id, patch: { scheduled_date: j.scheduled_date ?? null, status: j.status, pilot: j.pilot ?? null, equipment: j.equipment ?? null } },
+      }
+      const bits = [date && `for ${date}`, pilot && `pilot ${pilot}`, equipment && `on ${equipment}`].filter(Boolean).join(', ')
+      await logTimeline(supabase, ctx, 'job', j.id, 'stage', `Scheduled ${bits}`)
+      return { ok: true, job: label, scheduled_date: date || j.scheduled_date, pilot: patch.pilot ?? j.pilot, equipment: patch.equipment ?? j.equipment, status: patch.status ?? j.status }
     }
     case 'create_job': {
       if (!ctx.isStaff) return staffOnly
