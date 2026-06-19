@@ -42,6 +42,7 @@ const TOOL_STATUS: Record<string, string> = {
   query_jobs: 'Checking jobs…',
   get_finance_summary: 'Tallying the money…',
   update_job_status: 'Updating the job…',
+  schedule_job: 'Scheduling the job…',
   create_job: 'Creating the job…',
   query_fields: 'Checking mapped fields…',
   get_fields_summary: 'Totaling the acreage…',
