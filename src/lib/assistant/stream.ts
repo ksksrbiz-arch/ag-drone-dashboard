@@ -60,6 +60,7 @@ const TOOL_STATUS: Record<string, string> = {
   navigate: 'Opening that…',
   update_lead_stage: 'Updating the pipeline stage…',
   tag_lead: 'Tagging…',
+  update_lead: 'Updating the lead…',
   convert_lead_to_customer: 'Converting to a customer…',
   run_operation: 'Running that operation…',
   bulk_tag_leads: 'Tagging the matching leads…',
