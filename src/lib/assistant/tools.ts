@@ -527,6 +527,22 @@ export const TOOLS = [
     },
   },
   {
+    name: 'update_lead',
+    description:
+      "Update a lead's contact or detail fields — phone, email, contact_name, owner_name, address_physical, city, county, state, primary_crop, assigned_to (rep), est_acreage, est_annual_revenue. Use for \"set Smith Farms' phone to …\", \"assign the Henderson lead to Bo\", \"fix the email on …\", \"update acreage to 120\". Identify by lead_id or name search. Only changes the fields you pass. For pipeline stage use update_lead_stage; for tags use tag_lead. Staff only.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        lead_id: { type: 'string' }, search: { type: 'string', description: 'business/owner name' },
+        contact_name: { type: 'string' }, owner_name: { type: 'string' },
+        phone: { type: 'string' }, email: { type: 'string' },
+        address_physical: { type: 'string' }, city: { type: 'string' }, county: { type: 'string' }, state: { type: 'string' },
+        primary_crop: { type: 'string' }, assigned_to: { type: 'string', description: 'rep this lead is assigned to' },
+        est_acreage: { type: 'number' }, est_annual_revenue: { type: 'number' },
+      },
+    },
+  },
+  {
     name: 'convert_lead_to_customer',
     description:
       'Convert a lead into a customer record (status prospect) and link it. Identify by lead_id or name search. Staff only.',
@@ -784,7 +800,7 @@ const staffOnly = { error: 'That action needs owner/partner access — you have 
 
 // Write tools whose successful runs we record in the audit log.
 const MUTATING = new Set([
-  'update_lead_stage', 'tag_lead', 'convert_lead_to_customer', 'run_operation',
+  'update_lead_stage', 'tag_lead', 'update_lead', 'convert_lead_to_customer', 'run_operation',
   'bulk_tag_leads', 'bulk_update_stage', 'add_to_knowledge',
   'update_job_status', 'schedule_job', 'create_job', 'update_customer_status', 'add_customer_note',
   'create_customer', 'add_contract',
@@ -796,6 +812,7 @@ function summarizeAction(name: string, _args: Args, r: any): string {
   switch (name) {
     case 'update_lead_stage': return `Set ${r.lead}'s stage to ${r.loi_status}`
     case 'tag_lead': return `Tagged ${r.lead} (${(r.tags ?? []).join(', ')})`
+    case 'update_lead': return `Updated ${r.lead} (${(r.updated ?? []).join(', ')})`
     case 'convert_lead_to_customer': return `Converted ${r.name} to a customer`
     case 'run_operation': return `Ran ${r.operation}`
     case 'bulk_tag_leads': return `Tagged ${r.tagged} leads (${(r.tags ?? []).join(', ')})`
@@ -1415,6 +1432,28 @@ async function execTool(name: string, args: Args, ctx: ToolContext): Promise<unk
       if (error) return { error: error.message }
       ctx.undo = { label: `tags on ${name}`, tool: '_revert_lead', args: { id: r.lead.id, patch: { tags: existing } } }
       return { ok: true, lead: name, tags: merged }
+    }
+    case 'update_lead': {
+      if (!ctx.isStaff) return staffOnly
+      const r = await resolveLead(supabase, args, ctx)
+      if (r.error) return r
+      const l = r.lead
+      const name = l.business_name ?? l.owner_name
+      const TEXT = ['contact_name', 'owner_name', 'phone', 'email', 'address_physical', 'city', 'county', 'state', 'primary_crop', 'assigned_to'] as const
+      const patch: any = {}
+      const prev: any = {}
+      for (const k of TEXT) {
+        if (args[k] != null) { patch[k] = String(args[k]).trim() || null; prev[k] = l[k] ?? null }
+      }
+      for (const k of ['est_acreage', 'est_annual_revenue'] as const) {
+        if (typeof args[k] === 'number') { patch[k] = args[k]; prev[k] = l[k] ?? null }
+      }
+      if (!Object.keys(patch).length) return { error: 'Nothing to update — give me a field like phone, email, or assigned rep.' }
+      const { error } = await supabase.from('leads').update(patch).eq('id', l.id)
+      if (error) return { error: error.message }
+      ctx.actions.push({ type: 'refresh' })
+      ctx.undo = { label: `${name}'s details`, tool: '_revert_lead', args: { id: l.id, patch: prev } }
+      return { ok: true, lead: name, updated: Object.keys(patch) }
     }
     case 'convert_lead_to_customer': {
       if (!ctx.isStaff) return staffOnly
